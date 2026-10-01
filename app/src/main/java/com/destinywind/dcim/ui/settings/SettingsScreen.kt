@@ -1,6 +1,7 @@
 package com.destinywind.dcim.ui.settings
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,16 +70,9 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    // 编辑副本：保存才生效
-    var editing by remember { mutableStateOf(state.settings) }
-    val secrets = remember {
-        mutableStateOf(
-            mapOf(
-                "baiduAppId" to "", "baiduKey" to "", "deeplKey" to "",
-                "azureKey" to "", "tencentSecretId" to "", "tencentSecretKey" to "", "aiKey" to "",
-            )
-        )
-    }
+    // 设置直接读写持久层（自动保存），不再需要"保存"按钮
+    val editing = state.settings
+    val secrets by viewModel.secrets.collectAsStateWithLifecycle()
 
     var addDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -90,20 +84,14 @@ fun SettingsScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
-        // 顶栏
+        // 顶栏（设置改动自动保存，无需"保存/取消"按钮）
         Row(modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
             Text("设置", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { viewModel.save(editing, secrets.value.filter { it.value.isNotBlank() }, onBack) }) { Text("保存") }
-            TextButton(onClick = onBack) { Text("取消") }
-            TextButton(onClick = {
-                viewModel.resetDefaults()
-                editing = state.settings
-            }) { Text("恢复默认") }
+            TextButton(onClick = { viewModel.resetDefaults() }) { Text("恢复默认") }
         }
 
-        var addDialog by rememberSaveable { mutableStateOf(false) }
         LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
 
             // 通用设置（固定最顶部，不随分组展开被挤出屏幕）
@@ -117,20 +105,20 @@ fun SettingsScreen(
                             EngineId.CLOUD_BAIDU to "常规翻译（百度）", EngineId.CLOUD_DEEPL to "常规翻译（DeepL）",
                             EngineId.CLOUD_AZURE to "常规翻译（微软）", EngineId.CLOUD_TENCENT to "常规翻译（腾讯）",
                             EngineId.AI to "AI 翻译",
-                        ), editing.defaultEngine) { editing = editing.copy(defaultEngine = it) }
+                        ), editing.defaultEngine) { viewModel.update(editing.copy(defaultEngine = it)) }
                         DropdownRowText("源语言", listOf(
                             "auto" to "自动（混合语言）", "en" to "英文", "zh" to "中文", "ja" to "日文", "ko" to "韩文",
-                        ), editing.sourceLang) { editing = editing.copy(sourceLang = it) }
+                        ), editing.sourceLang) { viewModel.update(editing.copy(sourceLang = it)) }
                         DropdownRowText("目标语言", listOf(
                             "zh" to "中文（简体）", "en" to "英文", "ja" to "日文", "ko" to "韩文",
-                        ), editing.targetLang) { editing = editing.copy(targetLang = it) }
+                        ), editing.targetLang) { viewModel.update(editing.copy(targetLang = it)) }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("译文叠加透明度 ${"%.0f".format(Locale.US, editing.overlayOpacity * 100)}%", modifier = Modifier.weight(1f))
-                            Slider(value = editing.overlayOpacity, onValueChange = { editing = editing.copy(overlayOpacity = it) }, valueRange = 0.4f..1f, modifier = Modifier.width(160.dp))
+                            Slider(value = editing.overlayOpacity, onValueChange = { viewModel.update(editing.copy(overlayOpacity = it)) }, valueRange = 0.4f..1f, modifier = Modifier.width(160.dp))
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("译文叠加字号 ×${"%.1f".format(Locale.US, editing.overlayFontScale)}", modifier = Modifier.weight(1f))
-                            Slider(value = editing.overlayFontScale, onValueChange = { editing = editing.copy(overlayFontScale = it) }, valueRange = 0.7f..1.6f, modifier = Modifier.width(160.dp))
+                            Slider(value = editing.overlayFontScale, onValueChange = { viewModel.update(editing.copy(overlayFontScale = it)) }, valueRange = 0.7f..1.6f, modifier = Modifier.width(160.dp))
                         }
                         Text("提示：源语言选“自动”时本地翻译会自动识别语言", fontSize = 10.sp, color = Color(0xFF999999))
                     }
@@ -157,19 +145,19 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = editing.mirrorBaseUrl,
-                        onValueChange = { editing = editing.copy(mirrorBaseUrl = it) },
+                        onValueChange = { viewModel.update(editing.copy(mirrorBaseUrl = it)) },
                         label = { Text("自定义镜像 Base URL（可选，优先于内置镜像）") },
                         modifier = Modifier.fillMaxWidth(), singleLine = true,
                     )
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("仅 Wi-Fi 自动下载", modifier = Modifier.weight(1f))
-                        Switch(checked = editing.wifiOnlyDownload, onCheckedChange = { editing = editing.copy(wifiOnlyDownload = it) })
+                        Switch(checked = editing.wifiOnlyDownload, onCheckedChange = { viewModel.update(editing.copy(wifiOnlyDownload = it)) })
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         Text("单模型体积上限：${editing.maxModelSizeMb} MB", modifier = Modifier.weight(1f))
                         Slider(
                             value = editing.maxModelSizeMb.toFloat(),
-                            onValueChange = { editing = editing.copy(maxModelSizeMb = it.toInt()) },
+                            onValueChange = { viewModel.update(editing.copy(maxModelSizeMb = it.toInt())) },
                             valueRange = 100f..2000f,
                             modifier = Modifier.width(160.dp),
                         )
@@ -223,37 +211,37 @@ fun SettingsScreen(
                             EngineId.CLOUD_BAIDU to "百度", EngineId.CLOUD_DEEPL to "DeepL",
                             EngineId.CLOUD_AZURE to "微软", EngineId.CLOUD_TENCENT to "腾讯",
                         ).forEach { (id, label) ->
-                            FilterChip(selected = editing.cloudEngine == id, onClick = { editing = editing.copy(cloudEngine = id) }, label = { Text(label) })
+                            FilterChip(selected = editing.cloudEngine == id, onClick = { viewModel.update(editing.copy(cloudEngine = id)) }, label = { Text(label) })
                         }
                     }
                     Spacer(Modifier.height(6.dp))
                     when (editing.cloudEngine) {
                         EngineId.CLOUD_BAIDU -> {
-                            SecretField("AppID", secrets, "baiduAppId")
-                            SecretField("密钥（MD5 签名）", secrets, "baiduKey")
+                            SecretField("AppID", secrets, "baiduAppId") { viewModel.updateSecret("baiduAppId", it) }
+                            SecretField("密钥（MD5 签名）", secrets, "baiduKey") { viewModel.updateSecret("baiduKey", it) }
                             TestRow("测试连接") { viewModel.testConnection(EngineId.CLOUD_BAIDU, editing) { ok, msg -> viewModel.toast(msg) } }
                         }
                         EngineId.CLOUD_DEEPL -> {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("接口类型", modifier = Modifier.weight(1f))
                                 listOf("free" to "Free", "pro" to "Pro").forEach { (v, label) ->
-                                    FilterChip(selected = editing.deeplMode == v, onClick = { editing = editing.copy(deeplMode = v) }, label = { Text(label) })
+                                    FilterChip(selected = editing.deeplMode == v, onClick = { viewModel.update(editing.copy(deeplMode = v)) }, label = { Text(label) })
                                 }
                             }
-                            SecretField("API Key", secrets, "deeplKey")
+                            SecretField("API Key", secrets, "deeplKey") { viewModel.updateSecret("deeplKey", it) }
                             TestRow("测试连接") { viewModel.testConnection(EngineId.CLOUD_DEEPL, editing) { ok, msg -> viewModel.toast(msg) } }
                         }
                         EngineId.CLOUD_AZURE -> {
                             OutlinedTextField(
-                                value = editing.azureRegion, onValueChange = { editing = editing.copy(azureRegion = it) },
+                                value = editing.azureRegion, onValueChange = { viewModel.update(editing.copy(azureRegion = it)) },
                                 label = { Text("Region（如 eastasia）") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                             )
-                            SecretField("订阅密钥", secrets, "azureKey")
+                            SecretField("订阅密钥", secrets, "azureKey") { viewModel.updateSecret("azureKey", it) }
                             TestRow("测试连接") { viewModel.testConnection(EngineId.CLOUD_AZURE, editing) { ok, msg -> viewModel.toast(msg) } }
                         }
                         EngineId.CLOUD_TENCENT -> {
-                            SecretField("SecretId", secrets, "tencentSecretId")
-                            SecretField("SecretKey（v3 签名）", secrets, "tencentSecretKey")
+                            SecretField("SecretId", secrets, "tencentSecretId") { viewModel.updateSecret("tencentSecretId", it) }
+                            SecretField("SecretKey（v3 签名）", secrets, "tencentSecretKey") { viewModel.updateSecret("tencentSecretKey", it) }
                             TestRow("测试连接") { viewModel.testConnection(EngineId.CLOUD_TENCENT, editing) { ok, msg -> viewModel.toast(msg) } }
                         }
                         else -> {}
@@ -267,31 +255,31 @@ fun SettingsScreen(
                 Group("🤖 AI 翻译（OpenAI 兼容 · 默认关闭）") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("启用 AI 翻译", modifier = Modifier.weight(1f))
-                        Switch(checked = editing.aiEnabled, onCheckedChange = { editing = editing.copy(aiEnabled = it) })
+                        Switch(checked = editing.aiEnabled, onCheckedChange = { viewModel.update(editing.copy(aiEnabled = it)) })
                     }
                     OutlinedTextField(
-                        value = editing.aiBaseUrl, onValueChange = { editing = editing.copy(aiBaseUrl = it) },
+                        value = editing.aiBaseUrl, onValueChange = { viewModel.update(editing.copy(aiBaseUrl = it)) },
                         label = { Text("Base URL") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                     )
                     OutlinedTextField(
-                        value = editing.aiModel, onValueChange = { editing = editing.copy(aiModel = it) },
+                        value = editing.aiModel, onValueChange = { viewModel.update(editing.copy(aiModel = it)) },
                         label = { Text("模型名称") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                     )
-                    SecretField("API Key", secrets, "aiKey")
+                    SecretField("API Key", secrets, "aiKey") { viewModel.updateSecret("aiKey", it) }
                     OutlinedTextField(
-                        value = editing.aiPrompt, onValueChange = { editing = editing.copy(aiPrompt = it) },
+                        value = editing.aiPrompt, onValueChange = { viewModel.update(editing.copy(aiPrompt = it)) },
                         label = { Text("系统提示词") }, modifier = Modifier.fillMaxWidth(),
                     )
                     Row {
                         Text("温度 ${"%.1f".format(Locale.US, editing.aiTemperature)}", modifier = Modifier.weight(1f))
                         Slider(
-                            value = editing.aiTemperature, onValueChange = { editing = editing.copy(aiTemperature = (it * 10).toInt() / 10f) },
+                            value = editing.aiTemperature, onValueChange = { viewModel.update(editing.copy(aiTemperature = (it * 10).toInt() / 10f)) },
                             valueRange = 0f..2f, modifier = Modifier.width(160.dp),
                         )
                     }
                     OutlinedTextField(
                         value = editing.aiMaxTokens.toString(),
-                        onValueChange = { editing = editing.copy(aiMaxTokens = it.toIntOrNull() ?: 2048) },
+                        onValueChange = { viewModel.update(editing.copy(aiMaxTokens = it.toIntOrNull() ?: 2048)) },
                         label = { Text("最大生成长度") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
                     )
                     TestRow("测试连接") { viewModel.testConnection(EngineId.AI, editing) { ok, msg -> viewModel.toast(msg) } }
@@ -300,7 +288,7 @@ fun SettingsScreen(
 
             // 版本号
             item {
-                Text("拍照翻译 v1.0.5 (6) · com.destinywind.dcim", fontSize = 10.sp, color = Color(0xFF999999), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                Text("拍照翻译 v1.0.6 (7) · com.destinywind.dcim", fontSize = 10.sp, color = Color(0xFF999999), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
             }
         }
     }
@@ -327,7 +315,13 @@ private fun Group(title: String, initiallyOpen: Boolean = false, content: @Compo
             Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, modifier = Modifier.weight(1f))
             Icon(if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, contentDescription = null)
         }
-        AnimatedVisibility(visible = open) {
+        AnimatedVisibility(
+            visible = open,
+            enter = androidx.compose.animation.expandVertically(animationSpec = androidx.compose.animation.core.tween(220)) +
+                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)),
+            exit = androidx.compose.animation.shrinkVertically(animationSpec = androidx.compose.animation.core.tween(200)) +
+                androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180)),
+        ) {
             Column(modifier = Modifier.padding(horizontal = 14.dp).padding(bottom = 12.dp)) { content() }
         }
     }
@@ -345,10 +339,16 @@ private fun ModelCard(
     onDelete: () -> Unit,
 ) {
     val m = row.info
+    // 高亮颜色平滑过渡，启用/取消启用不生硬
+    val containerColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (active) Color(0xFFE8F0FE) else MaterialTheme.colorScheme.surface,
+        animationSpec = androidx.compose.animation.core.tween(250),
+        label = "modelCardColor",
+    )
     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = androidx.compose.material3.CardDefaults.cardColors(
-        containerColor = if (active) Color(0xFFE8F0FE) else MaterialTheme.colorScheme.surface,
+        containerColor = containerColor,
     )) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(12.dp).animateContentSize()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(m.name + if (m.custom) "（自定义）" else "", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.weight(1f))
                 Text("${"%.1f".format(Locale.US, m.sizeBytes / 1024.0 / 1024.0)} MB", fontSize = 11.sp, color = Color(0xFF888888))
@@ -403,10 +403,10 @@ private fun ModelCard(
 }
 
 @Composable
-private fun SecretField(label: String, secrets: MutableState<Map<String, String>>, key: String) {
+private fun SecretField(label: String, secrets: Map<String, String>, key: String, onChange: (String) -> Unit) {
     OutlinedTextField(
-        value = secrets.value[key] ?: "",
-        onValueChange = { secrets.value = secrets.value + (key to it) },
+        value = secrets[key] ?: "",
+        onValueChange = onChange,
         label = { Text(label) },
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         singleLine = true,

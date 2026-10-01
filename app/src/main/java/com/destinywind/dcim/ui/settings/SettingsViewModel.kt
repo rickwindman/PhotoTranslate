@@ -61,6 +61,16 @@ class SettingsViewModel @Inject constructor(
     private val _state = MutableStateFlow(SettingsUiState(settings = settingsRepo.settings.value))
     val state: StateFlow<SettingsUiState> = _state
 
+    /** 引擎密钥（界面可读写，自动防抖保存到加密存储） */
+    private val _secrets = MutableStateFlow(
+        listOf("baiduAppId", "baiduKey", "deeplKey", "azureKey", "tencentSecretId", "tencentSecretKey", "aiKey")
+            .map { it to settingsRepo.secret(it) }.toMap(),
+    )
+    val secrets: StateFlow<Map<String, String>> = _secrets
+
+    private var saveJob: kotlinx.coroutines.Job? = null
+    private var pendingSecrets: Map<String, String> = emptyMap()
+
     init {
         // 持久层任何设置变更（如启用模型写入 activeModelId）实时同步到 UI 状态，
         // 否则卡片高亮读的是过期快照，会出现"点启用没反应，重进才生效"
@@ -74,6 +84,28 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val (c, r) = settingsRepo.quota()
             _state.value = _state.value.copy(quotaChars = c, quotaRequests = r)
+        }
+    }
+
+    /** 设置变更：立即反映到界面，防抖 400ms 后落盘（滑条拖动等高频操作只写一次） */
+    fun update(s: AppSettings) {
+        _state.value = _state.value.copy(settings = s)
+        scheduleSave(s)
+    }
+
+    /** 密钥变更：立即反映到输入框，防抖落盘到加密存储 */
+    fun updateSecret(key: String, value: String) {
+        _secrets.value = _secrets.value + (key to value)
+        pendingSecrets = pendingSecrets + (key to value)
+        scheduleSave(_state.value.settings)
+    }
+
+    private fun scheduleSave(s: AppSettings) {
+        saveJob?.cancel()
+        saveJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(400)
+            settingsRepo.save(s, pendingSecrets)
+            pendingSecrets = emptyMap()
         }
     }
 
@@ -115,7 +147,7 @@ class SettingsViewModel @Inject constructor(
 
     // ---------- OCR 模型 ----------
     fun downloadModel(modelId: String) {
-        val s = settingsRepo.settings.value
+        val s = _state.value.settings
         downloadController.enqueue(modelId, s.wifiOnlyDownload, s.mirrorBaseUrl)
         refreshModels()
         toast("已开始下载")
@@ -183,7 +215,7 @@ class SettingsViewModel @Inject constructor(
         allowUnsafe: Boolean, onResult: (Boolean, String) -> Unit,
     ) {
         viewModelScope.launch {
-            val s = settingsRepo.settings.value
+            val s = _state.value.settings
             val maxBytes = s.maxModelSizeMb.toLong() * 1024 * 1024
             if (name.isBlank()) { onResult(false, "模型名称必填"); return@launch }
             if (mainUrl.isBlank()) { onResult(false, "主下载链接必填"); return@launch }
@@ -246,19 +278,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     // ---------- 设置 ----------
-    fun save(settings: AppSettings, secrets: Map<String, String>, onDone: () -> Unit) {
-        viewModelScope.launch {
-            settingsRepo.save(settings, secrets)
-            _state.value = _state.value.copy(settings = settings)
-            toast("设置已保存")
-            onDone()
-        }
-    }
-
     fun resetDefaults() {
         viewModelScope.launch {
             settingsRepo.resetDefaults()
             _state.value = _state.value.copy(settings = settingsRepo.settings.value)
+            _secrets.value = _secrets.value.keys.associateWith { settingsRepo.secret(it) }
+            pendingSecrets = emptyMap()
             toast("已恢复默认（不删除已下载模型）")
         }
     }
@@ -268,15 +293,16 @@ class SettingsViewModel @Inject constructor(
         toast("已清除翻译缓存")
     }
 
-    /** 各引擎测试连接 */
+    /** 各引擎测试连接（优先用界面当前输入的密钥，避免防抖未落盘导致测的是旧值） */
     fun testConnection(engineId: EngineId, s: AppSettings, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
+            val sec = { k: String -> _secrets.value[k]?.ifBlank { settingsRepo.secret(k) } ?: settingsRepo.secret(k) }
             val engine = when (engineId) {
-                EngineId.CLOUD_BAIDU -> BaiduEngine(settingsRepo.secret("baiduAppId").ifBlank { s.baiduAppId }, settingsRepo.secret("baiduKey"))
-                EngineId.CLOUD_DEEPL -> DeepLEngine(settingsRepo.secret("deeplKey"), s.deeplMode)
-                EngineId.CLOUD_AZURE -> AzureEngine(settingsRepo.secret("azureKey"), s.azureRegion)
-                EngineId.CLOUD_TENCENT -> TencentEngine(settingsRepo.secret("tencentSecretId"), settingsRepo.secret("tencentSecretKey"), s.tencentRegion)
-                EngineId.AI -> AiEngine(s.aiBaseUrl, s.aiModel, settingsRepo.secret("aiKey"), s.aiPrompt, s.aiTemperature, s.aiMaxTokens)
+                EngineId.CLOUD_BAIDU -> BaiduEngine(sec("baiduAppId").ifBlank { s.baiduAppId }, sec("baiduKey"))
+                EngineId.CLOUD_DEEPL -> DeepLEngine(sec("deeplKey"), s.deeplMode)
+                EngineId.CLOUD_AZURE -> AzureEngine(sec("azureKey"), s.azureRegion)
+                EngineId.CLOUD_TENCENT -> TencentEngine(sec("tencentSecretId"), sec("tencentSecretKey"), s.tencentRegion)
+                EngineId.AI -> AiEngine(s.aiBaseUrl, s.aiModel, sec("aiKey"), s.aiPrompt, s.aiTemperature, s.aiMaxTokens)
                 else -> null
             }
             val r = engine?.testConnection()
