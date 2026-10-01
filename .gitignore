@@ -30,3 +30,4 @@ local.properties
 
 # Downloaded deps (large archives, re-downloadable)
 deps/
+.wxrecon/

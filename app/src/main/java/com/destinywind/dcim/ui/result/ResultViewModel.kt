@@ -1,6 +1,7 @@
 package com.destinywind.dcim.ui.result
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.ViewModel
@@ -117,7 +118,6 @@ class ResultViewModel @Inject constructor(
             val smallH = (src.height.toDouble() * smallW / src.width).toInt().coerceAtLeast(1)
             val small = Bitmap.createScaledBitmap(src, smallW, smallH, true)
             val blurred = Bitmap.createScaledBitmap(small, src.width, src.height, true)
-            if (small != blurred) small.recycle()
             val px = IntArray(smallW * smallH)
             small.getPixels(px, 0, smallW, 0, 0, smallW, smallH)
             val kx = smallW.toFloat() / src.width
@@ -149,7 +149,7 @@ class ResultViewModel @Inject constructor(
             if (small != blurred && !small.isRecycled) small.recycle()
             src.recycle()
             _state.value = _state.value.copy(blurredImage = blurred.asImageBitmap(), lineDark = dark)
-        }
+        }.onFailure { Log.e("PhotoTranslateOcr", "prepareMask failed", it) }
     }
 
     /** 引擎切换后立即对当前图片重新翻译，无需重新拍照 */
