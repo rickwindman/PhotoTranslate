@@ -28,6 +28,28 @@ static std::vector<std::string> keys;
 static bool g_hasCls = false;
 static int g_recHeight = 48; // PP-OCRv3/v4 rec 输入高度 48；旧版 sim 模型为 32
 
+// ---------- blob 名动态解析（不同模型转换产物命名不一：input/input0、output/out1） ----------
+// 喂输入：优先 "input"，失败取第一个 blob（param 首层 Input 的输出）
+static bool feedInput(ncnn::Extractor& ex, const ncnn::Net& net, const ncnn::Mat& in)
+{
+    if (ex.input("input", in) == 0) return true;
+    if (!net.blobs().empty() && ex.input(net.blobs().front().name.c_str(), in) == 0) return true;
+    LOGW("feed input blob failed");
+    return false;
+}
+
+// 取输出：优先 "output"，失败取最后一个 blob；两者都空返回 false
+static bool extractOutput(ncnn::Extractor& ex, const ncnn::Net& net, ncnn::Mat& out)
+{
+    ex.extract("output", out);
+    if (!out.empty()) return true;
+    if (!net.blobs().empty())
+        ex.extract(net.blobs().back().name.c_str(), out);
+    if (!out.empty()) return true;
+    LOGW("extract output blob failed");
+    return false;
+}
+
 // ---------- 检测（DBNet）----------
 std::vector<TextBox> findRsBoxes(const cv::Mat& fMapMat, const cv::Mat& norfMapMat,
     const float boxScoreThresh, const float unClipRatio)
@@ -86,13 +108,12 @@ std::vector<TextBox> getTextBoxes(const cv::Mat& src, float boxScoreThresh, floa
     in_pad.substract_mean_normalize(meanValues, normValues);
 
     ncnn::Extractor ex = dbNet.create_extractor();
-    ex.input("input", in_pad);
     ncnn::Mat out;
-    ex.extract("output", out);
-    if (out.empty() && !dbNet.blobs().empty())
+    if (!feedInput(ex, dbNet, in_pad) || !extractOutput(ex, dbNet, out))
     {
-        // 兜底：旧版模型输出 blob 名不同，取最后一个 blob
-        ex.extract(dbNet.blobs().back().name.c_str(), out);
+        // 输入/输出 blob 均无法解析：返回空结果，绝不包空指针（否则 cv::dilate 解引用 SIGSEGV）
+        LOGW("det: no output from model, return empty boxes");
+        return {};
     }
 
     cv::Mat fMapMat(in_pad.h, in_pad.w, CV_32FC1, (float*)out.data);
@@ -128,10 +149,8 @@ cv::Mat classifyRotate(const cv::Mat& src)
     const float norm_vals[3] = { 1.0f / 127.5f, 1.0f / 127.5f, 1.0f / 127.5f };
     in.substract_mean_normalize(mean_vals, norm_vals);
     ncnn::Extractor ex = clsNet.create_extractor();
-    ex.input("input", in);
     ncnn::Mat out;
-    ex.extract("out", out);
-    if (out.empty() || out.w < 2) return src;
+    if (!feedInput(ex, clsNet, in) || !extractOutput(ex, clsNet, out) || out.w < 2) return src;
     const float* d = (const float*)out.data;
     if (d[1] > d[0])
         return matRotateClockWise180(src);
@@ -179,11 +198,9 @@ TextLine getTextLine(const cv::Mat& srcIn)
     in.substract_mean_normalize(mean_vals, norm_vals);
 
     ncnn::Extractor ex = crnnNet.create_extractor();
-    ex.input("input", in);
     ncnn::Mat out;
-    ex.extract("output", out);
-    if (out.empty() && !crnnNet.blobs().empty())
-        ex.extract(crnnNet.blobs().back().name.c_str(), out);
+    if (!feedInput(ex, crnnNet, in) || !extractOutput(ex, crnnNet, out))
+        return TextLine{ "", {} }; // 识别失败返回空文本，不崩溃
     std::vector<float> outputData((float*)out.data, (float*)out.data + out.h * out.w);
     return scoreToTextLine(outputData, out.h, out.w);
 }

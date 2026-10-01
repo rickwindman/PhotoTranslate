@@ -45,6 +45,8 @@ data class SettingsUiState(
     val quotaRequests: Int = 0,
     val totalModelBytes: Long = 0,
     val toast: String = "",
+    /** 正在启用中的模型 id（用于行内加载指示） */
+    val activatingModelId: String? = null,
 )
 
 @HiltViewModel
@@ -69,13 +71,16 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun refreshModels() {
-        val rows = modelRepo.all().map { m ->
-            ModelRow(m, modelRepo.isInstalled(m.modelId), modelRepo.installedSize(m.modelId), downloadController.stateOf(m.modelId))
+        viewModelScope.launch {
+            // 磁盘统计放后台，避免主线程 IO 卡顿
+            val (rows, total) = withContext(Dispatchers.Default) {
+                val r = modelRepo.all().map { m ->
+                    ModelRow(m, modelRepo.isInstalled(m.modelId), modelRepo.installedSize(m.modelId), downloadController.stateOf(m.modelId))
+                }
+                r to modelRepo.totalInstalledSize()
+            }
+            _state.value = _state.value.copy(modelRows = rows, totalModelBytes = total)
         }
-        _state.value = _state.value.copy(
-            modelRows = rows,
-            totalModelBytes = modelRepo.totalInstalledSize(),
-        )
     }
 
     fun refreshMlKit() {
@@ -106,29 +111,47 @@ class SettingsViewModel @Inject constructor(
         val s = settingsRepo.settings.value
         downloadController.enqueue(modelId, s.wifiOnlyDownload, s.mirrorBaseUrl)
         refreshModels()
+        toast("已开始下载")
     }
 
-    fun cancelDownload(modelId: String) { downloadController.cancel(modelId); refreshModels() }
+    fun cancelDownload(modelId: String) { downloadController.cancel(modelId); refreshModels(); toast("已取消下载") }
 
     fun enableModel(modelId: String) {
+        if (_state.value.activatingModelId != null) return // 防止重复点击
+        _state.value = _state.value.copy(activatingModelId = modelId)
         viewModelScope.launch {
-            val cur = settingsRepo.settings.value
-            settingsRepo.save(cur.copy(activeModelId = modelId))
+            val prev = settingsRepo.settings.value.activeModelId
+            // 先写配置 → 卡片立即高亮，用户马上看到反馈
+            settingsRepo.save(settingsRepo.settings.value.copy(activeModelId = modelId))
+            refreshModels()
             val m = modelRepo.find(modelId)
-            val ok = m != null && ocrEngine.initFromDir(modelRepo.modelDir(modelId), m.recHeight)
-            toast(if (ok) "已启用，推理引擎已重新加载" else "启用失败：引擎初始化异常")
+            // 模型加载（15MB+ 文件 IO + 原生初始化）必须放后台线程，否则主线程卡死
+            val ok = m != null && withContext(Dispatchers.Default) {
+                ocrEngine.initFromDir(modelRepo.modelDir(modelId), m.recHeight)
+            }
+            if (!ok) {
+                // 初始化失败回滚到之前的启用状态
+                settingsRepo.save(settingsRepo.settings.value.copy(activeModelId = prev))
+            }
+            _state.value = _state.value.copy(activatingModelId = null)
+            refreshModels()
+            toast(if (ok) "已启用，推理引擎已重新加载" else "启用失败：引擎初始化异常，已恢复原状态")
         }
     }
 
     fun deleteModel(modelId: String) {
-        val m = modelRepo.find(modelId) ?: return
-        if (m.custom) modelRepo.removeCustom(modelId)
-        else { modelRepo.modelDir(modelId).deleteRecursively() }
-        val cur = settingsRepo.settings.value
-        if (cur.activeModelId == modelId) viewModelScope.launch { settingsRepo.save(cur.copy(activeModelId = null)) }
-        ocrEngine.release()
-        refreshModels()
-        toast("已删除")
+        viewModelScope.launch {
+            val m = modelRepo.find(modelId) ?: return@launch
+            withContext(Dispatchers.Default) {
+                if (m.custom) modelRepo.removeCustom(modelId)
+                else modelRepo.modelDir(modelId).deleteRecursively()
+            }
+            val cur = settingsRepo.settings.value
+            if (cur.activeModelId == modelId) settingsRepo.save(cur.copy(activeModelId = null))
+            ocrEngine.release()
+            refreshModels()
+            toast("已删除")
+        }
     }
 
     fun clearAllCaches() {
@@ -220,6 +243,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepo.save(settings, secrets)
             _state.value = _state.value.copy(settings = settings)
+            toast("设置已保存")
             onDone()
         }
     }

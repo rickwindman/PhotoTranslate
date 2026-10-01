@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -114,6 +115,7 @@ fun SettingsScreen(
                         ModelCard(
                             row = row,
                             active = state.settings.activeModelId == row.info.modelId,
+                            activating = state.activatingModelId == row.info.modelId,
                             onDownload = { viewModel.downloadModel(row.info.modelId) },
                             onCancel = { viewModel.cancelDownload(row.info.modelId) },
                             onEnable = { viewModel.enableModel(row.info.modelId) },
@@ -298,7 +300,7 @@ fun SettingsScreen(
 
             // ② OCR 模型
             item {
-                Text("拍照翻译 v1.0.3 (4) · com.destinywind.dcim", fontSize = 10.sp, color = Color(0xFF999999), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                Text("拍照翻译 v1.0.4 (5) · com.destinywind.dcim", fontSize = 10.sp, color = Color(0xFF999999), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
             }
         }
     }
@@ -336,6 +338,7 @@ private fun Group(title: String, initiallyOpen: Boolean = false, content: @Compo
 private fun ModelCard(
     row: ModelRow,
     active: Boolean,
+    activating: Boolean,
     onDownload: () -> Unit,
     onCancel: () -> Unit,
     onEnable: () -> Unit,
@@ -364,9 +367,19 @@ private fun ModelCard(
                         Text("取消", color = Color(0xFFEA4335), fontSize = 11.sp, modifier = Modifier.clickable { onCancel() })
                     }
                     row.installed -> {
-                        Text(if (active) "✓ 已启用" else "已安装", color = Color(0xFF34A853), fontSize = 11.sp, modifier = Modifier.weight(1f))
-                        if (!active) Text("启用", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.clickable { onEnable() }.padding(end = 12.dp))
-                        Text("删除", color = Color(0xFFEA4335), fontSize = 12.sp, modifier = Modifier.clickable { onDelete() })
+                        if (activating) {
+                            // 启用中：行内转圈，明确告知正在加载引擎
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("启用中，正在加载模型…", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        } else {
+                            Text(if (active) "✓ 已启用" else "已安装", color = Color(0xFF34A853), fontSize = 11.sp, modifier = Modifier.weight(1f))
+                            if (!active) Text("启用", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.clickable { onEnable() }.padding(end = 12.dp))
+                            Text("删除", color = Color(0xFFEA4335), fontSize = 12.sp, modifier = Modifier.clickable { onDelete() })
+                        }
                     }
                     dl.phase == DownloadState.Phase.FAILED -> {
                         Text("失败：${dl.message}", color = Color(0xFFEA4335), fontSize = 11.sp, modifier = Modifier.weight(1f))
