@@ -1,6 +1,7 @@
 package com.destinywind.dcim.ui.result
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -38,12 +39,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -123,34 +128,99 @@ fun ResultScreen(
                                 val t = state.translations.getOrNull(i) ?: ""
                                 val showOriginal = originalBlocks.contains(i)
                                 val text = if (showOriginal || t.isBlank()) line.text else t
-                                // 译文块：中心 = 框质心，尺寸 = 框实际边长，旋转 = 框角度（原文什么方向译文就什么方向）
+                                val dark = state.lineDark.getOrNull(i) ?: false
+                                // 微信扫一扫式双层结构：
+                                // 外层 = 轴对齐 AABB（不旋转），模糊背景与原图像素精确对齐，完全不透明盖住原文
+                                // 内层 = 译文按原文方向与框尺寸旋转 + 自适应字号
+                                val blur = state.blurredImage
+                                // 模糊采样区域：AABB 外扩 2px，防止边缘露字；钳制到图内
+                                val sx = (g.ax - 2f).toInt().coerceAtLeast(0)
+                                val sy = (g.ay - 2f).toInt().coerceAtLeast(0)
+                                val ex = (g.ax + g.aw + 2f).toInt()
+                                    .coerceAtMost(blur?.width ?: Int.MAX_VALUE)
+                                val ey = (g.ay + g.ah + 2f).toInt()
+                                    .coerceAtMost(blur?.height ?: Int.MAX_VALUE)
+                                val outerW = (ex - sx) * scale
+                                val outerH = (ey - sy) * scale
                                 val blockW = g.w * scale
                                 val blockH = g.h * scale
                                 Box(
                                     modifier = Modifier
-                                        .width(blockW.dp).height(blockH.dp)
-                                        .offset((g.cx * scale - blockW / 2).dp, (g.cy * scale - blockH / 2).dp)
-                                        .graphicsLayer { rotationZ = g.angleDeg }
-                                        .background(
-                                            (if (showOriginal) Color(0xE6FFFFFF) else Color(0xFF1E5ADC))
-                                                .copy(alpha = state.overlayOpacity),
-                                            RoundedCornerShape(3.dp),
-                                        )
+                                        .width(outerW.dp).height(outerH.dp)
+                                        .offset((sx * scale).dp, (sy * scale).dp)
                                         .pointerInput(i) {
                                             detectTapGestures(onTap = {
                                                 originalBlocks =
                                                     if (showOriginal) originalBlocks - i else originalBlocks + i
                                             })
                                         },
-                                    contentAlignment = Alignment.Center,
                                 ) {
-                                    AutoFitText(
-                                        text = text,
-                                        boxW = blockW.dp,
-                                        boxH = blockH.dp,
-                                        maxSp = blockH * 0.72f,
-                                        color = if (showOriginal) Color(0xFF333333) else Color.White,
-                                    )
+                                    if (blur != null && !showOriginal) {
+                                        // 背景层：从模糊大图裁出本行区域铺满（与原图像素对齐，无露字）
+                                        val painter = remember(blur, sx, sy, ex, ey) {
+                                            BitmapPainter(
+                                                blur,
+                                                srcOffset = IntOffset(sx, sy),
+                                                srcSize = IntSize(ex - sx, ey - sy),
+                                            )
+                                        }
+                                        Image(
+                                            painter = painter,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.FillBounds,
+                                            modifier = Modifier.matchParentSize(),
+                                        )
+                                        // 文字层：译文按原文方向 + 字号，深色背景自动白字
+                                        Box(
+                                            modifier = Modifier.matchParentSize(),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(blockW.dp).height(blockH.dp)
+                                                    .graphicsLayer { rotationZ = g.angleDeg }
+                                                    .background(
+                                                        Color.White.copy(alpha = state.overlayOpacity * 0.35f),
+                                                        RoundedCornerShape(3.dp),
+                                                    ),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                AutoFitText(
+                                                    text = text,
+                                                    boxW = blockW.dp,
+                                                    boxH = blockH.dp,
+                                                    maxSp = blockH * 0.72f,
+                                                    color = if (dark) Color.White else Color.Black,
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        // 回退（模糊图未就绪）/ 原文模式：白纱 + 原地文字
+                                        Box(
+                                            modifier = Modifier.matchParentSize(),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(blockW.dp).height(blockH.dp)
+                                                    .graphicsLayer { rotationZ = g.angleDeg }
+                                                    .background(
+                                                        (if (showOriginal) Color(0xE6FFFFFF) else Color(0xFF1E5ADC))
+                                                            .copy(alpha = state.overlayOpacity),
+                                                        RoundedCornerShape(3.dp),
+                                                    ),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                AutoFitText(
+                                                    text = text,
+                                                    boxW = blockW.dp,
+                                                    boxH = blockH.dp,
+                                                    maxSp = blockH * 0.72f,
+                                                    color = if (showOriginal) Color(0xFF333333) else Color.White,
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -286,8 +356,13 @@ private val languages = listOf(
     "auto" to "自动", "zh" to "中文", "en" to "英文", "ja" to "日文", "ko" to "韩文",
 )
 
-/** OCR 四点框渲染几何：中心、未旋转宽高、旋转角（度，直接用于 rotationZ） */
-private data class QuadGeometry(val cx: Float, val cy: Float, val w: Float, val h: Float, val angleDeg: Float)
+/** OCR 四点框渲染几何：中心、未旋转宽高、旋转角（度，直接用于 rotationZ）、轴对齐外接框（AABB） */
+private data class QuadGeometry(
+    val cx: Float, val cy: Float,
+    val w: Float, val h: Float,
+    val angleDeg: Float,
+    val ax: Float, val ay: Float, val aw: Float, val ah: Float,
+)
 
 /** 由四点框（TL,TR,BR,BL 顺时针）计算渲染几何；无效框返回 null */
 private fun quadGeometry(box: FloatArray): QuadGeometry? {
@@ -300,7 +375,15 @@ private fun quadGeometry(box: FloatArray): QuadGeometry? {
     if (angle < -90f) angle += 180f
     val cx = (box[0] + box[2] + box[4] + box[6]) / 4f
     val cy = (box[1] + box[3] + box[5] + box[7]) / 4f
-    return QuadGeometry(cx, cy, w.coerceAtLeast(24f), h.coerceAtLeast(16f), angle)
+    // 轴对齐外接框（模糊背景层用：与原图像素对齐）
+    val minX = minOf(box[0], box[2], box[4], box[6])
+    val minY = minOf(box[1], box[3], box[5], box[7])
+    val maxX = maxOf(box[0], box[2], box[4], box[6])
+    val maxY = maxOf(box[1], box[3], box[5], box[7])
+    return QuadGeometry(
+        cx, cy, w.coerceAtLeast(24f), h.coerceAtLeast(16f), angle,
+        minX, minY, maxX - minX, maxY - minY,
+    )
 }
 
 /**

@@ -1,17 +1,23 @@
 package com.destinywind.dcim.ui.result
 
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.destinywind.dcim.core.PhotoStore
+import com.destinywind.dcim.core.ocr.ImageUtils
 import com.destinywind.dcim.core.ocr.OcrLine
 import com.destinywind.dcim.core.ocr.OcrRepository
 import com.destinywind.dcim.data.EngineId
 import com.destinywind.dcim.data.SettingsRepository
 import com.destinywind.dcim.translate.TranslationManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -32,6 +38,10 @@ data class ResultUiState(
     val needModelDownload: Boolean = false,
     val overlayFontScale: Float = 1.0f,
     val overlayOpacity: Float = 0.82f,
+    /** 与显示位图同尺寸的强模糊版本（微信扫一扫式遮盖背景），null = 尚未生成 */
+    val blurredImage: ImageBitmap? = null,
+    /** 每行框内背景是否偏暗（决定译文用白字还是黑字） */
+    val lineDark: List<Boolean> = emptyList(),
 ) {
     enum class Phase { IDLE, OCR, TRANSLATE, DONE, ERROR }
 }
@@ -89,7 +99,56 @@ class ResultViewModel @Inject constructor(
                 return@launch
             }
             _state.value = _state.value.copy(lines = lines, phase = ResultUiState.Phase.TRANSLATE, message = "正在翻译…")
+            // 微信扫一扫式遮盖：并行生成模糊背景 + 每行背景亮度（黑字/白字）
+            viewModelScope.launch { prepareMask(session.file, lines) }
             retranslate()
+        }
+    }
+
+    /**
+     * 生成遮盖素材：
+     * 1) 与显示位图同尺寸的强模糊版本（缩小 1/14 再放大，快速无依赖），供译文块背景完全盖住原文；
+     * 2) 每行框内背景平均亮度（在缩略图上采样）→ 决定译文黑字/白字。
+     */
+    private suspend fun prepareMask(file: File, lines: List<OcrLine>) = withContext(Dispatchers.Default) {
+        runCatching {
+            val src = ImageUtils.decodeUpright(file, ImageUtils.SHARE_MAX_DIM)
+            val smallW = (src.width / 14).coerceAtLeast(1)
+            val smallH = (src.height.toDouble() * smallW / src.width).toInt().coerceAtLeast(1)
+            val small = Bitmap.createScaledBitmap(src, smallW, smallH, true)
+            val blurred = Bitmap.createScaledBitmap(small, src.width, src.height, true)
+            if (small != blurred) small.recycle()
+            val px = IntArray(smallW * smallH)
+            small.getPixels(px, 0, smallW, 0, 0, smallW, smallH)
+            val kx = smallW.toFloat() / src.width
+            val ky = smallH.toFloat() / src.height
+            val dark = lines.map { line ->
+                if (line.box.size < 8) return@map false
+                val xs = FloatArray(4) { line.box[it * 2] }
+                val ys = FloatArray(4) { line.box[it * 2 + 1] }
+                val ax = (xs.min() * kx).toInt().coerceIn(0, smallW - 1)
+                val ay = (ys.min() * ky).toInt().coerceIn(0, smallH - 1)
+                val bx = (xs.max() * kx).toInt().coerceIn(ax + 1, smallW)
+                val by = (ys.max() * ky).toInt().coerceIn(ay + 1, smallH)
+                var sum = 0f; var n = 0
+                val step = 2
+                var y = ay
+                while (y < by) {
+                    var x = ax
+                    while (x < bx) {
+                        val p = px[y * smallW + x]
+                        sum += (0.299f * ((p shr 16) and 0xFF) + 0.587f * ((p shr 8) and 0xFF) + 0.114f * (p and 0xFF)) / 255f
+                        n++
+                        x += step
+                    }
+                    y += step
+                }
+                val lum = if (n > 0) sum / n else 1f
+                lum < 0.45f  // 背景偏暗 → 译文用白字
+            }
+            if (small != blurred && !small.isRecycled) small.recycle()
+            src.recycle()
+            _state.value = _state.value.copy(blurredImage = blurred.asImageBitmap(), lineDark = dark)
         }
     }
 
