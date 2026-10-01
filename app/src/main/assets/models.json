@@ -1,0 +1,194 @@
+{
+ "version": 1,
+ "models": [
+  {
+   "modelId": "ppocrv4-mobile",
+   "name": "PP-OCRv4 mobile 中英通用",
+   "version": "v4.0",
+   "languages": [
+    "中",
+    "英"
+   ],
+   "sizeBytes": 20868399,
+   "description": "速度与精度均衡，推荐默认",
+   "recHeight": 48,
+   "recommended": true,
+   "files": [
+    {
+     "name": "det.param",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_ppstructure/main/models/ppocrv4/det.param",
+     "sha256": "f4c7f5ba72057c2ddbf1a2223fb5ce164501e8a47f94e30f008dcd40c15a95ea",
+     "sizeBytes": 121492
+    },
+    {
+     "name": "det.bin",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_ppstructure/main/models/ppocrv4/det.bin",
+     "sha256": "fb3de1a3071f8a3b33916a8f521b41f586783661536d269a4152d89537f1e518",
+     "sizeBytes": 7037676
+    },
+    {
+     "name": "rec.param",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_ppstructure/main/models/ppocrv4/rec.param",
+     "sha256": "adcdb4086c830b21bfa7be6f4ad5c54105b4cc34911f75cc708e50b0eabb74b6",
+     "sizeBytes": 122626
+    },
+    {
+     "name": "rec.bin",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_ppstructure/main/models/ppocrv4/rec.bin",
+     "sha256": "3820e44654f8c67dbe9eb5296a6b47ccc47ec21d34dbd546c891da3681da5738",
+     "sizeBytes": 13288216
+    },
+    {
+     "name": "keys.txt",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/paddleocr_keys.txt",
+     "sha256": "28b2362ad4ab2dc38769aa72feb535e3a9ddb3fd2a7585a05920e6393b1dc7f7",
+     "sizeBytes": 26249
+    },
+    {
+     "name": "cls.param",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/cls-sim-op.param",
+     "sha256": "e428a51ae586cd92f0655070b45c66c044b4cec8df7c354e5d95af85cc4b6c60",
+     "sizeBytes": 11188
+    },
+    {
+     "name": "cls.bin",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/cls-sim-op.bin",
+     "sha256": "302afefc2a6dd875665c08862b721a035f725cab438f36f74bd5b4c89df91201",
+     "sizeBytes": 260952
+    }
+   ],
+   "mirrorPrefixes": [
+    "https://gh-proxy.org/",
+    "https://v4.gh-proxy.org/",
+    "https://cdn.gh-proxy.org/",
+    ""
+   ]
+  },
+  {
+   "modelId": "ppocrv3-mobile",
+   "name": "PP-OCRv3 mobile 中英通用",
+   "version": "v3.0",
+   "languages": [
+    "中",
+    "英"
+   ],
+   "sizeBytes": 13160338,
+   "description": "经典版本，稳定",
+   "recHeight": 48,
+   "recommended": false,
+   "files": [
+    {
+     "name": "det.param",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/ch_PP-OCRv3_det.param",
+     "sha256": "00c73e25ec36db5134e1a7258cee48957c8d2ab074dba6780d7cc1a86798cf79",
+     "sizeBytes": 18203
+    },
+    {
+     "name": "det.bin",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/ch_PP-OCRv3_det.bin",
+     "sha256": "e47dbd2183020fd2a571ae459ee67a2a1fdc6a3ec88d7d226167278fd1d22cc0",
+     "sizeBytes": 2296300
+    },
+    {
+     "name": "rec.param",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/ch_PP-OCRv3_rec.param",
+     "sha256": "6eff775dd98bc5c555d81039b2b5865e4039abf95bf1468aa15795bb81a03af7",
+     "sizeBytes": 13790
+    },
+    {
+     "name": "rec.bin",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/ch_PP-OCRv3_rec.bin",
+     "sha256": "4c5ac2ac7ffb208109fd78ded6f89d43850b721eb414a058af1dda2fe6994085",
+     "sizeBytes": 10533656
+    },
+    {
+     "name": "keys.txt",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/paddleocr_keys.txt",
+     "sha256": "28b2362ad4ab2dc38769aa72feb535e3a9ddb3fd2a7585a05920e6393b1dc7f7",
+     "sizeBytes": 26249
+    },
+    {
+     "name": "cls.param",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/cls-sim-op.param",
+     "sha256": "e428a51ae586cd92f0655070b45c66c044b4cec8df7c354e5d95af85cc4b6c60",
+     "sizeBytes": 11188
+    },
+    {
+     "name": "cls.bin",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/cls-sim-op.bin",
+     "sha256": "302afefc2a6dd875665c08862b721a035f725cab438f36f74bd5b4c89df91201",
+     "sizeBytes": 260952
+    }
+   ],
+   "mirrorPrefixes": [
+    "https://gh-proxy.org/",
+    "https://v4.gh-proxy.org/",
+    "https://cdn.gh-proxy.org/",
+    ""
+   ]
+  },
+  {
+   "modelId": "fast-sim",
+   "name": "轻量极速模型",
+   "version": "mobile",
+   "languages": [
+    "中",
+    "英"
+   ],
+   "sizeBytes": 3617506,
+   "description": "速度优先，精度较低",
+   "recHeight": 32,
+   "recommended": false,
+   "files": [
+    {
+     "name": "det.param",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/det-sim-op.param",
+     "sha256": "25933e1485ad625a083b602df5252e4b262235894b01b80315b3da1cb4a31ab3",
+     "sizeBytes": 9938
+    },
+    {
+     "name": "det.bin",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/det-sim-op.bin",
+     "sha256": "20703daa7b7efdfb6bfaa2b89cb07d4dc0e01338df4ac9d5187dd6c7c921d8fa",
+     "sizeBytes": 1120140
+    },
+    {
+     "name": "rec.param",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/rec-sim-op.param",
+     "sha256": "bacc0cd115d52fe5c541642fb64ecb1c5edafbe7673a00c7ab2b21a4bcfdaeb1",
+     "sizeBytes": 11451
+    },
+    {
+     "name": "rec.bin",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/rec-sim-op.bin",
+     "sha256": "6ac985db83607bd0c5bcbfd4cf68176a0f24875729dcf2729c797e8e854e217f",
+     "sizeBytes": 2177588
+    },
+    {
+     "name": "keys.txt",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/paddleocr_keys.txt",
+     "sha256": "28b2362ad4ab2dc38769aa72feb535e3a9ddb3fd2a7585a05920e6393b1dc7f7",
+     "sizeBytes": 26249
+    },
+    {
+     "name": "cls.param",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/cls-sim-op.param",
+     "sha256": "e428a51ae586cd92f0655070b45c66c044b4cec8df7c354e5d95af85cc4b6c60",
+     "sizeBytes": 11188
+    },
+    {
+     "name": "cls.bin",
+     "url": "https://raw.githubusercontent.com/FeiGeChuanShu/ncnn_paddleocr/main/app/src/main/assets/cls-sim-op.bin",
+     "sha256": "302afefc2a6dd875665c08862b721a035f725cab438f36f74bd5b4c89df91201",
+     "sizeBytes": 260952
+    }
+   ],
+   "mirrorPrefixes": [
+    "https://gh-proxy.org/",
+    "https://v4.gh-proxy.org/",
+    "https://cdn.gh-proxy.org/",
+    ""
+   ]
+  }
+ ]
+}

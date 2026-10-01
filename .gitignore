@@ -1,0 +1,32 @@
+# Android build artifacts
+build/
+app/build/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Gradle
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Local config
+local.properties
+
+# APK outputs
+*.apk
+*.aab
+
+# Native build temp
+*.o
+*.so.obj
+
+# Logs
+*.log
+
+# Downloaded deps (large archives, re-downloadable)
+deps/
