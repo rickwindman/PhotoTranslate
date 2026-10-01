@@ -93,7 +93,8 @@ fun ChatScreen(
             }
         },
     ) { inner ->
-        Column(modifier = Modifier.fillMaxSize().padding(inner)) {
+        // imePadding 加在整列上：键盘弹出时页面整体抬升，顶栏保持可见、输入栏紧贴键盘
+        Column(modifier = Modifier.fillMaxSize().padding(inner).imePadding()) {
 
             // ---- 语言窄条 ----
             Row(
@@ -229,7 +230,7 @@ fun ChatScreen(
 
             // ---- 底部输入栏 ----
             Row(
-                modifier = Modifier.fillMaxWidth().imePadding().padding(horizontal = 10.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
                 OutlinedTextField(
