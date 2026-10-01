@@ -30,6 +30,8 @@ data class ResultUiState(
     val sourceLang: String = "en",
     val targetLang: String = "zh",
     val needModelDownload: Boolean = false,
+    val overlayFontScale: Float = 1.0f,
+    val overlayOpacity: Float = 0.82f,
 ) {
     enum class Phase { IDLE, OCR, TRANSLATE, DONE, ERROR }
 }
@@ -56,6 +58,8 @@ class ResultViewModel @Inject constructor(
             },
             sourceLang = s.sourceLang,
             targetLang = s.targetLang,
+            overlayFontScale = s.overlayFontScale,
+            overlayOpacity = s.overlayOpacity,
         )
         process()
     }

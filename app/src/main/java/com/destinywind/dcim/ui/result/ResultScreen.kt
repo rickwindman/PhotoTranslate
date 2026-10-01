@@ -37,14 +37,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.destinywind.dcim.core.ocr.ImageUtils
+import kotlin.math.atan2
+import kotlin.math.hypot
 
 /**
  * 翻译结果页（全屏沉浸式，与拍照页一致）：
@@ -112,25 +119,21 @@ fun ResultScreen(
                             state.phase != ResultUiState.Phase.OCR
                         if (showOverlay) {
                             state.lines.forEachIndexed { i, line ->
-                                // 坐标框数据异常时跳过该块，避免越界崩溃
-                                if (line.box.size < 8) return@forEachIndexed
+                                val g = quadGeometry(line.box) ?: return@forEachIndexed
                                 val t = state.translations.getOrNull(i) ?: ""
                                 val showOriginal = originalBlocks.contains(i)
                                 val text = if (showOriginal || t.isBlank()) line.text else t
-                                val xs = List(4) { line.box[it * 2] }
-                                val ys = List(4) { line.box[it * 2 + 1] }
-                                val minX = (xs.min() * scale).toFloat()
-                                val minY = (ys.min() * scale).toFloat()
-                                val w = ((xs.max() - xs.min()) * scale).coerceAtLeast(24f)
-                                val h = ((ys.max() - ys.min()) * scale).coerceAtLeast(16f)
-                                val fontSize = ((h / (if (text.length > 14) 2 else 1)) * 0.8f)
-                                    .coerceIn(8f, 20f)
+                                // 译文块：中心 = 框质心，尺寸 = 框实际边长，旋转 = 框角度（原文什么方向译文就什么方向）
+                                val blockW = g.w * scale
+                                val blockH = g.h * scale
                                 Box(
                                     modifier = Modifier
-                                        .width(w.dp).height(h.dp)
-                                        .offset(minX.dp, minY.dp)
+                                        .width(blockW.dp).height(blockH.dp)
+                                        .offset((g.cx * scale - blockW / 2).dp, (g.cy * scale - blockH / 2).dp)
+                                        .graphicsLayer { rotationZ = g.angleDeg }
                                         .background(
-                                            if (showOriginal) Color(0xE6FFFFFF) else Color(0xD31E5ADC),
+                                            (if (showOriginal) Color(0xE6FFFFFF) else Color(0xFF1E5ADC))
+                                                .copy(alpha = state.overlayOpacity),
                                             RoundedCornerShape(3.dp),
                                         )
                                         .pointerInput(i) {
@@ -141,14 +144,12 @@ fun ResultScreen(
                                         },
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    Text(
-                                        text,
+                                    AutoFitText(
+                                        text = text,
+                                        boxW = blockW.dp,
+                                        boxH = blockH.dp,
+                                        maxSp = blockH * 0.72f,
                                         color = if (showOriginal) Color(0xFF333333) else Color.White,
-                                        fontSize = fontSize.sp,
-                                        lineHeight = (fontSize * 1.15).sp,
-                                        maxLines = 3,
-                                        modifier = Modifier.padding(horizontal = 3.dp),
-                                        textAlign = TextAlign.Center,
                                     )
                                 }
                             }
@@ -284,6 +285,74 @@ fun ResultScreen(
 private val languages = listOf(
     "auto" to "自动", "zh" to "中文", "en" to "英文", "ja" to "日文", "ko" to "韩文",
 )
+
+/** OCR 四点框渲染几何：中心、未旋转宽高、旋转角（度，直接用于 rotationZ） */
+private data class QuadGeometry(val cx: Float, val cy: Float, val w: Float, val h: Float, val angleDeg: Float)
+
+/** 由四点框（TL,TR,BR,BL 顺时针）计算渲染几何；无效框返回 null */
+private fun quadGeometry(box: FloatArray): QuadGeometry? {
+    if (box.size < 8) return null
+    val w = hypot(box[2] - box[0], box[3] - box[1])  // TL→TR：文本行进方向边长
+    val h = hypot(box[6] - box[0], box[7] - box[1])  // TL→BL：行高方向边长
+    if (w < 8f || h < 8f) return null
+    var angle = Math.toDegrees(atan2((box[3] - box[1]).toDouble(), (box[2] - box[0]).toDouble())).toFloat()
+    if (angle > 90f) angle -= 180f
+    if (angle < -90f) angle += 180f
+    val cx = (box[0] + box[2] + box[4] + box[6]) / 4f
+    val cy = (box[1] + box[3] + box[5] + box[7]) / 4f
+    return QuadGeometry(cx, cy, w.coerceAtLeast(24f), h.coerceAtLeast(16f), angle)
+}
+
+/**
+ * 逐块自适应字号文本：二分查找"能放进框内的最大字号"（单位 sp）。
+ * 每块独立计算，同一照片中大框得大字、小框得小字；纯 measure 调用，无反复重组。
+ */
+@Composable
+private fun AutoFitText(
+    text: String,
+    boxW: androidx.compose.ui.unit.Dp,
+    boxH: androidx.compose.ui.unit.Dp,
+    maxSp: Float,
+    color: Color,
+) {
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val fittedSp = remember(text, boxW, boxH, maxSp) {
+        val upper = maxSp.coerceIn(6f, 48f)
+        val maxW = with(density) { (boxW - 6.dp).toPx().toInt().coerceAtLeast(1) }
+        val maxH = with(density) { (boxH).toPx().toInt().coerceAtLeast(1) }
+        fun fits(size: Float): Boolean {
+            val r = textMeasurer.measure(
+                text = text,
+                style = TextStyle(fontSize = size.sp, lineHeight = (size * 1.15f).sp),
+                constraints = Constraints(maxWidth = maxW, maxHeight = maxH),
+            )
+            return !r.hasVisualOverflow
+        }
+        var lo = 6f
+        var hi = upper
+        if (fits(hi)) {
+            hi  // 上限就放得下，直接用
+        } else {
+            // 二分收敛到最大可容纳字号
+            var result = 6f
+            while (hi - lo > 0.5f) {
+                val mid = (lo + hi) / 2f
+                if (fits(mid)) { result = mid; lo = mid } else hi = mid
+            }
+            result
+        }
+    }
+    Text(
+        text,
+        color = color,
+        fontSize = fittedSp.sp,
+        lineHeight = (fittedSp * 1.15f).sp,
+        textAlign = TextAlign.Center,
+        softWrap = true,
+        modifier = Modifier.fillMaxSize().padding(horizontal = 3.dp),
+    )
+}
 
 @Composable
 private fun LanguageChip(label: String, current: String, onPick: (String) -> Unit) {
