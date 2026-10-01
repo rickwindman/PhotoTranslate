@@ -298,7 +298,7 @@ fun SettingsScreen(
 
             // ② OCR 模型
             item {
-                Text("拍照翻译 v1.0.2 (3) · com.destinywind.dcim", fontSize = 10.sp, color = Color(0xFF999999), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                Text("拍照翻译 v1.0.3 (4) · com.destinywind.dcim", fontSize = 10.sp, color = Color(0xFF999999), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
             }
         }
     }

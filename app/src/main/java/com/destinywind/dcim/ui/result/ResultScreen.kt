@@ -63,9 +63,11 @@ fun ResultScreen(
     var overlayHidden by remember { mutableStateOf(false) }
     var originalBlocks by remember { mutableStateOf(setOf<Int>()) }
 
-    // 与 OCR 完全相同的解码（EXIF 转正），保证叠加坐标原位
+    // 与 OCR 完全相同的解码（EXIF 转正 + 同一降采样上限），保证叠加坐标原位
     val bitmap = remember(state.imageFile) {
-        state.imageFile?.let { runCatching { ImageUtils.decodeUpright(it) }.getOrNull() }
+        state.imageFile?.let {
+            runCatching { ImageUtils.decodeUpright(it, ImageUtils.SHARE_MAX_DIM) }.getOrNull()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF101010))) {
@@ -110,6 +112,8 @@ fun ResultScreen(
                             state.phase != ResultUiState.Phase.OCR
                         if (showOverlay) {
                             state.lines.forEachIndexed { i, line ->
+                                // 坐标框数据异常时跳过该块，避免越界崩溃
+                                if (line.box.size < 8) return@forEachIndexed
                                 val t = state.translations.getOrNull(i) ?: ""
                                 val showOriginal = originalBlocks.contains(i)
                                 val text = if (showOriginal || t.isBlank()) line.text else t

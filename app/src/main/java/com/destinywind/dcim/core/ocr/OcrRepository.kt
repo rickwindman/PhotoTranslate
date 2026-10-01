@@ -33,9 +33,9 @@ class OcrRepository @Inject constructor(
         return null
     }
 
-    /** 识别图片文件（自动处理 EXIF 方向，与显示共用同一解码） */
+    /** 识别图片文件（自动处理 EXIF 方向，与显示共用同一解码参数，保证坐标一致） */
     suspend fun detectFile(file: File): Pair<Bitmap, List<OcrLine>> = withContext(Dispatchers.Default) {
-        val bitmap = ImageUtils.decodeUpright(file)
+        val bitmap = ImageUtils.decodeUpright(file, ImageUtils.SHARE_MAX_DIM)
         val lines = engine.detect(bitmap)
         bitmap to lines
     }

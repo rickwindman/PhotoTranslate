@@ -17,6 +17,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -85,7 +87,9 @@ fun CameraScreen(
     LaunchedEffect(Unit) { if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA) }
 
     // 预览视图与绑定（前后摄切换时重新绑定）
-    val previewView = remember { PreviewView(context) }
+    val previewView = remember {
+        PreviewView(context).apply { scaleType = PreviewView.ScaleType.FIT_CENTER }
+    }
     LaunchedEffect(lensFacing, hasPermission) {
         if (!hasPermission) return@LaunchedEffect
         val provider = ProcessCameraProvider.getInstance(context).get()
@@ -104,7 +108,16 @@ fun CameraScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         if (hasPermission) {
-            AndroidView(modifier = Modifier.fillMaxSize(), factory = { previewView }, update = { })
+            // 预览区域与结果页照片显示区域保持一致（竖版 3:4 居中 + 四周黑边），
+            // 避免全屏预览与结果页按比例缩放的照片大小不一致
+            BoxWithConstraints(modifier = Modifier.align(Alignment.Center)) {
+                val scale = minOf(maxWidth.value / 3f, maxHeight.value / 4f)
+                AndroidView(
+                    modifier = Modifier.width((3 * scale).dp).height((4 * scale).dp),
+                    factory = { previewView },
+                    update = { },
+                )
+            }
         } else {
             Column(
                 modifier = Modifier.align(Alignment.Center).padding(32.dp),
