@@ -15,8 +15,8 @@ android {
         applicationId = "com.destinywind.dcim"
         minSdk = 31
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.0.11"
+        versionCode = 13
+        versionName = "1.0.12"
         // 仅 arm64-v8a：所有 native so 只保留 arm64
         ndk { abiFilters += "arm64-v8a" }
     }

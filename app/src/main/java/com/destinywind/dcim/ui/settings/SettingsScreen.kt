@@ -112,14 +112,7 @@ fun SettingsScreen(
                         DropdownRowText("目标语言", listOf(
                             "zh" to "中文（简体）", "en" to "英文", "ja" to "日文", "ko" to "韩文",
                         ), editing.targetLang) { viewModel.update(editing.copy(targetLang = it)) }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("译文叠加透明度 ${"%.0f".format(Locale.US, editing.overlayOpacity * 100)}%", modifier = Modifier.weight(1f))
-                            Slider(value = editing.overlayOpacity, onValueChange = { viewModel.update(editing.copy(overlayOpacity = it)) }, valueRange = 0.4f..1f, modifier = Modifier.width(160.dp))
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("译文叠加字号 ×${"%.1f".format(Locale.US, editing.overlayFontScale)}", modifier = Modifier.weight(1f))
-                            Slider(value = editing.overlayFontScale, onValueChange = { viewModel.update(editing.copy(overlayFontScale = it)) }, valueRange = 0.7f..1.6f, modifier = Modifier.width(160.dp))
-                        }
+                        Text("译文按原文位置/方向/自动字号覆盖（字号随框大小与字数自动计算）", fontSize = 10.sp, color = Color(0xFF999999))
                         Text("提示：源语言选“自动”时本地翻译会自动识别语言", fontSize = 10.sp, color = Color(0xFF999999))
                     }
                 }
@@ -288,7 +281,7 @@ fun SettingsScreen(
 
             // 版本号
             item {
-                Text("拍照翻译 v1.0.11 (12) · com.destinywind.dcim", fontSize = 10.sp, color = Color(0xFF999999), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                Text("拍照翻译 v1.0.12 (13) · com.destinywind.dcim", fontSize = 10.sp, color = Color(0xFF999999), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
             }
         }
     }

@@ -55,8 +55,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.destinywind.dcim.core.ocr.ImageUtils
-import kotlin.math.atan2
-import kotlin.math.hypot
 
 /**
  * 翻译结果页（全屏沉浸式，与拍照页一致）：
@@ -123,15 +121,14 @@ fun ResultScreen(
                         val showOverlay = showTranslated && !overlayHidden &&
                             state.phase != ResultUiState.Phase.OCR
                         if (showOverlay) {
-                            state.lines.forEachIndexed { i, line ->
-                                val g = quadGeometry(line.box) ?: return@forEachIndexed
+                            state.groups.forEachIndexed { i, g ->
                                 val t = state.translations.getOrNull(i) ?: ""
                                 val showOriginal = originalBlocks.contains(i)
-                                val text = if (showOriginal || t.isBlank()) line.text else t
-                                val dark = state.lineDark.getOrNull(i) ?: false
-                                // 微信扫一扫式双层结构：
-                                // 外层 = 轴对齐 AABB（不旋转），模糊背景与原图像素精确对齐，完全不透明盖住原文
-                                // 内层 = 译文按原文方向与框尺寸旋转 + 自适应字号
+                                val text = if (showOriginal || t.isBlank()) g.text else t
+                                val dark = state.groupDark.getOrNull(i) ?: false
+                                // 微信扫一扫式双层结构（句级组）：
+                                // 外层 = 各行 AABB 并集（轴对齐不旋转），模糊背景与原图像素精确对齐，盖住原文
+                                // 内层 = 组内容框按组方向旋转 + AutoFit 自动字号（按框大小和字数二分）
                                 val blur = state.blurredImage
                                 // 模糊采样区域：AABB 外扩 2px，防止边缘露字；钳制到图内
                                 val sx = (g.ax - 2f).toInt().coerceAtLeast(0)
@@ -142,8 +139,8 @@ fun ResultScreen(
                                     .coerceAtMost(blur?.height ?: Int.MAX_VALUE)
                                 val outerW = (ex - sx) * scale
                                 val outerH = (ey - sy) * scale
-                                val blockW = g.w * scale
-                                val blockH = g.h * scale
+                                val blockW = g.rw * scale
+                                val blockH = g.rh * scale
                                 Box(
                                     modifier = Modifier
                                         .width(outerW.dp).height(outerH.dp)
@@ -156,7 +153,7 @@ fun ResultScreen(
                                         },
                                 ) {
                                     if (blur != null && !showOriginal) {
-                                        // 背景层：从模糊大图裁出本行区域铺满（与原图像素对齐，无露字）
+                                        // 背景层：从模糊大图裁出本组区域铺满（与原图像素对齐，无露字）
                                         val painter = remember(blur, sx, sy, ex, ey) {
                                             BitmapPainter(
                                                 blur,
@@ -170,7 +167,7 @@ fun ResultScreen(
                                             contentScale = ContentScale.FillBounds,
                                             modifier = Modifier.matchParentSize(),
                                         )
-                                        // 文字层：译文按原文方向 + 字号，深色背景自动白字
+                                        // 文字层：译文按组方向 + 自动字号，深色背景自动白字
                                         Box(
                                             modifier = Modifier.matchParentSize(),
                                             contentAlignment = Alignment.Center,
@@ -180,7 +177,7 @@ fun ResultScreen(
                                                     .width(blockW.dp).height(blockH.dp)
                                                     .graphicsLayer { rotationZ = g.angleDeg }
                                                     .background(
-                                                        Color.White.copy(alpha = state.overlayOpacity * 0.35f),
+                                                        Color.White.copy(alpha = OVERLAY_OPACITY * 0.35f),
                                                         RoundedCornerShape(3.dp),
                                                     ),
                                                 contentAlignment = Alignment.Center,
@@ -206,7 +203,7 @@ fun ResultScreen(
                                                     .graphicsLayer { rotationZ = g.angleDeg }
                                                     .background(
                                                         (if (showOriginal) Color(0xE6FFFFFF) else Color(0xFF1E5ADC))
-                                                            .copy(alpha = state.overlayOpacity),
+                                                            .copy(alpha = OVERLAY_OPACITY),
                                                         RoundedCornerShape(3.dp),
                                                     ),
                                                 contentAlignment = Alignment.Center,
@@ -352,62 +349,14 @@ fun ResultScreen(
     }
 }
 
+/** 译文叠加固定透明度（字号/透明度设置已移除，全部自动） */
+private const val OVERLAY_OPACITY = 0.82f
+
 private val languages = listOf(
     "auto" to "自动", "zh" to "中文", "en" to "英文", "ja" to "日文", "ko" to "韩文",
 )
 
-/** OCR 四点框渲染几何：中心、未旋转宽高、旋转角（度，直接用于 rotationZ）、轴对齐外接框（AABB） */
-private data class QuadGeometry(
-    val cx: Float, val cy: Float,
-    val w: Float, val h: Float,
-    val angleDeg: Float,
-    val ax: Float, val ay: Float, val aw: Float, val ah: Float,
-)
-
-/** 由四点框计算渲染几何（左原点排序规则）；无效框返回 null */
-private fun quadGeometry(box: FloatArray): QuadGeometry? {
-    if (box.size < 8) return null
-    val px = FloatArray(4) { box[it * 2] }
-    val py = FloatArray(4) { box[it * 2 + 1] }
-
-    // ① 原点 p0 = 最左点（min x，平局取 min y）
-    var oi = 0
-    for (i in 1 until 4) {
-        if (px[i] < px[oi] - 0.01f || (kotlin.math.abs(px[i] - px[oi]) <= 0.01f && py[i] < py[oi])) oi = i
-    }
-
-    // ② 其余三点按相对 p0 的极角升序（屏幕 y 向下 = 顺时针）→ p1,p2,p3
-    val others = (0 until 4).filter { it != oi }.sortedBy { i ->
-        atan2(py[i] - py[oi], px[i] - px[oi])
-    }
-    val qx = floatArrayOf(px[oi], px[others[0]], px[others[1]], px[others[2]])
-    val qy = floatArrayOf(py[oi], py[others[0]], py[others[1]], py[others[2]])
-
-    // ③ 文字方向 = 长边：d3 > d1 时行进边取 p0→p3（竖排模式）
-    val d1 = hypot(qx[1] - qx[0], qy[1] - qy[0])
-    val d3 = hypot(qx[3] - qx[0], qy[3] - qy[0])
-    val vertical = d3 > d1
-    val w = if (vertical) d3 else d1
-    val h = if (vertical) d1 else d3
-    if (w < 8f || h < 8f) return null
-    val tipX = if (vertical) qx[3] else qx[1]
-    val tipY = if (vertical) qy[3] else qy[1]
-    var angle = Math.toDegrees(atan2((tipY - qy[0]).toDouble(), (tipX - qx[0]).toDouble())).toFloat()
-    if (angle > 90f) angle -= 180f
-    if (angle < -90f) angle += 180f
-
-    val cx = (qx[0] + qx[1] + qx[2] + qx[3]) / 4f
-    val cy = (qy[0] + qy[1] + qy[2] + qy[3]) / 4f
-    // 轴对齐外接框（模糊背景层用：与原图像素对齐）
-    val minX = minOf(qx[0], qx[1], qx[2], qx[3])
-    val minY = minOf(qy[0], qy[1], qy[2], qy[3])
-    val maxX = maxOf(qx[0], qx[1], qx[2], qx[3])
-    val maxY = maxOf(qy[0], qy[1], qy[2], qy[3])
-    return QuadGeometry(
-        cx, cy, w.coerceAtLeast(24f), h.coerceAtLeast(16f), angle,
-        minX, minY, maxX - minX, maxY - minY,
-    )
-}
+// 行级四点框几何（QuadGeometry / quadGeometry）已迁移到 QuadGeometry.kt，供 ViewModel 分组与渲染共用
 
 /**
  * 逐块自适应字号文本：二分查找"能放进框内的最大字号"（单位 sp）。

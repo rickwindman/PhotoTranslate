@@ -27,22 +27,32 @@ enum class UiEngine(val label: String) {
     LOCAL("本地翻译（离线）"), FREE("免费翻译 MyMemory"), CLOUD("常规翻译"), AI("AI 翻译");
 }
 
+/** 句级组：行合并成完整句后的翻译/覆盖单位 */
+data class OcrGroup(
+    val text: String,                                  // 组内合并文本（翻译单位）
+    val ax: Float, val ay: Float, val aw: Float, val ah: Float, // 各行 AABB 并集（模糊背景层）
+    val rw: Float, val rh: Float,                      // 旋转坐标系下的内容框（内层文字层）
+    val angleDeg: Float,                               // 组方向（取组内第一行行级角度）
+)
+
+/** 行合并成完整句的终止标点 */
+private const val SENTENCE_TERMINALS = "。．.!?！？；;"
+
 data class ResultUiState(
     val phase: Phase = Phase.IDLE,
     val message: String = "",
     val imageFile: File? = null,
-    val lines: List<OcrLine> = emptyList(),
+    val groups: List<OcrGroup> = emptyList(),
+    /** 每组译文（与 groups 1:1） */
     val translations: List<String> = emptyList(),
     val engine: UiEngine = UiEngine.FREE,
     val sourceLang: String = "en",
     val targetLang: String = "zh",
     val needModelDownload: Boolean = false,
-    val overlayFontScale: Float = 1.0f,
-    val overlayOpacity: Float = 0.82f,
     /** 与显示位图同尺寸的强模糊版本（微信扫一扫式遮盖背景），null = 尚未生成 */
     val blurredImage: ImageBitmap? = null,
-    /** 每行框内背景是否偏暗（决定译文用白字还是黑字） */
-    val lineDark: List<Boolean> = emptyList(),
+    /** 每组框内背景是否偏暗（决定译文用白字还是黑字），与 groups 1:1 */
+    val groupDark: List<Boolean> = emptyList(),
 ) {
     enum class Phase { IDLE, OCR, TRANSLATE, DONE, ERROR }
 }
@@ -69,8 +79,6 @@ class ResultViewModel @Inject constructor(
             },
             sourceLang = s.sourceLang,
             targetLang = s.targetLang,
-            overlayFontScale = s.overlayFontScale,
-            overlayOpacity = s.overlayOpacity,
         )
         process()
     }
@@ -96,26 +104,96 @@ class ResultViewModel @Inject constructor(
             }
             bitmap.recycle() // 仅需要文本与坐标
             if (lines.isEmpty()) {
-                _state.value = _state.value.copy(phase = ResultUiState.Phase.DONE, lines = emptyList(), translations = emptyList(), message = "未识别到文字")
+                _state.value = _state.value.copy(phase = ResultUiState.Phase.DONE, groups = emptyList(), translations = emptyList(), message = "未识别到文字")
                 return@launch
             }
-            _state.value = _state.value.copy(lines = lines, phase = ResultUiState.Phase.TRANSLATE, message = "正在翻译…")
-            // 诊断日志：每行文本 + 四点框坐标（排查角序/合并框问题）
+            // 行 → 完整句组：一行以终止标点结尾则自成一组，否则与后续行合并到完整为止
+            val groups = groupLines(lines)
+            _state.value = _state.value.copy(groups = groups, phase = ResultUiState.Phase.TRANSLATE, message = "正在翻译…")
+            // 诊断日志：行与组
             lines.forEachIndexed { i, l ->
                 Log.d("PhotoTranslateOcr", "line[$i] '${l.text}' box=${l.box.joinToString(separator = ",") { String.format("%.0f", it) }}")
             }
-            // 微信扫一扫式遮盖：并行生成模糊背景 + 每行背景亮度（黑字/白字）
-            viewModelScope.launch { prepareMask(session.file, lines) }
+            groups.forEachIndexed { i, g ->
+                Log.d("PhotoTranslateOcr", "group[$i] '${g.text}' aabb=(${String.format("%.0f", g.ax)},${String.format("%.0f", g.ay)},${String.format("%.0f", g.aw)},${String.format("%.0f", g.ah)}) angle=${String.format("%.1f", g.angleDeg)}")
+            }
+            // 微信扫一扫式遮盖：并行生成模糊背景 + 每组背景亮度（黑字/白字）
+            viewModelScope.launch { prepareMask(session.file, groups) }
             retranslate()
         }
     }
 
     /**
+     * 行合并成完整句组：
+     * 行文本以终止标点（。．.!?！？；;）结尾 → 当前行结组；否则与后续行合并到完整为止；末尾剩余行自成一组。
+     * 组几何：AABB 并集（模糊背景层）；内容框取"按组角度反旋后的外接框"（内层文字层）；角度取组内第一行行级角度。
+     */
+    private fun groupLines(lines: List<OcrLine>): List<OcrGroup> {
+        val groups = mutableListOf<OcrGroup>()
+        var idxs = mutableListOf<Int>()
+        var text = StringBuilder()
+
+        fun flush() {
+            if (idxs.isEmpty()) return
+            var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE
+            var maxX = -Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+            idxs.forEach { i ->
+                val b = lines[i].box
+                if (b.size >= 8) {
+                    for (k in 0 until 4) {
+                        minX = minOf(minX, b[k * 2]); maxX = maxOf(maxX, b[k * 2])
+                        minY = minOf(minY, b[k * 2 + 1]); maxY = maxOf(maxY, b[k * 2 + 1])
+                    }
+                }
+            }
+            val angle = quadGeometry(lines[idxs.first()].box)?.angleDeg ?: 0f
+            // 内容框：所有行四点绕组中心反旋 angle 后的外接框
+            val rad = Math.toRadians(angle.toDouble())
+            val cos = kotlin.math.cos(rad).toFloat(); val sin = kotlin.math.sin(rad).toFloat()
+            val cx = (minX + maxX) / 2f; val cy = (minY + maxY) / 2f
+            var rminX = Float.MAX_VALUE; var rminY = Float.MAX_VALUE
+            var rmaxX = -Float.MAX_VALUE; var rmaxY = -Float.MAX_VALUE
+            idxs.forEach { i ->
+                val b = lines[i].box
+                if (b.size >= 8) {
+                    for (k in 0 until 4) {
+                        val dx = b[k * 2] - cx; val dy = b[k * 2 + 1] - cy
+                        val rx = dx * cos + dy * sin
+                        val ry = -dx * sin + dy * cos
+                        rminX = minOf(rminX, rx); rmaxX = maxOf(rmaxX, rx)
+                        rminY = minOf(rminY, ry); rmaxY = maxOf(rmaxY, ry)
+                    }
+                }
+            }
+            groups.add(
+                OcrGroup(
+                    text = text.toString(),
+                    ax = minX, ay = minY, aw = maxX - minX, ah = maxY - minY,
+                    rw = rmaxX - rminX, rh = rmaxY - rminY,
+                    angleDeg = angle,
+                )
+            )
+            idxs = mutableListOf(); text = StringBuilder()
+        }
+
+        lines.forEachIndexed { i, l ->
+            val t = l.text.trim()
+            if (t.isEmpty()) return@forEachIndexed
+            if (text.isNotEmpty()) text.append(' ')
+            text.append(t)
+            idxs.add(i)
+            if (SENTENCE_TERMINALS.contains(t.last())) flush()
+        }
+        flush()
+        return groups
+    }
+
+    /**
      * 生成遮盖素材：
      * 1) 与显示位图同尺寸的强模糊版本（缩小 1/14 再放大，快速无依赖），供译文块背景完全盖住原文；
-     * 2) 每行框内背景平均亮度（在缩略图上采样）→ 决定译文黑字/白字。
+     * 2) 每组框内背景平均亮度（在缩略图上采样）→ 决定译文黑字/白字。
      */
-    private suspend fun prepareMask(file: File, lines: List<OcrLine>) = withContext(Dispatchers.Default) {
+    private suspend fun prepareMask(file: File, groups: List<OcrGroup>) = withContext(Dispatchers.Default) {
         runCatching {
             val src = ImageUtils.decodeUpright(file, ImageUtils.SHARE_MAX_DIM)
             val smallW = (src.width / 14).coerceAtLeast(1)
@@ -126,14 +204,11 @@ class ResultViewModel @Inject constructor(
             small.getPixels(px, 0, smallW, 0, 0, smallW, smallH)
             val kx = smallW.toFloat() / src.width
             val ky = smallH.toFloat() / src.height
-            val dark = lines.map { line ->
-                if (line.box.size < 8) return@map false
-                val xs = FloatArray(4) { line.box[it * 2] }
-                val ys = FloatArray(4) { line.box[it * 2 + 1] }
-                val ax = (xs.min() * kx).toInt().coerceIn(0, smallW - 1)
-                val ay = (ys.min() * ky).toInt().coerceIn(0, smallH - 1)
-                val bx = (xs.max() * kx).toInt().coerceIn(ax + 1, smallW)
-                val by = (ys.max() * ky).toInt().coerceIn(ay + 1, smallH)
+            val dark = groups.map { g ->
+                val ax = (g.ax * kx).toInt().coerceIn(0, smallW - 1)
+                val ay = (g.ay * ky).toInt().coerceIn(0, smallH - 1)
+                val bx = ((g.ax + g.aw) * kx).toInt().coerceIn(ax + 1, smallW)
+                val by = ((g.ay + g.ah) * ky).toInt().coerceIn(ay + 1, smallH)
                 var sum = 0f; var n = 0
                 val step = 2
                 var y = ay
@@ -152,7 +227,7 @@ class ResultViewModel @Inject constructor(
             }
             if (small != blurred && !small.isRecycled) small.recycle()
             src.recycle()
-            _state.value = _state.value.copy(blurredImage = blurred.asImageBitmap(), lineDark = dark)
+            _state.value = _state.value.copy(blurredImage = blurred.asImageBitmap(), groupDark = dark)
         }.onFailure { Log.e("PhotoTranslateOcr", "prepareMask failed", it) }
     }
 
@@ -169,7 +244,7 @@ class ResultViewModel @Inject constructor(
 
     private fun retranslate() {
         val s = _state.value
-        if (s.lines.isEmpty()) return
+        if (s.groups.isEmpty()) return
         _state.value = s.copy(phase = ResultUiState.Phase.TRANSLATE, message = "正在翻译…")
         viewModelScope.launch {
             val engineId = when (s.engine) {
@@ -178,16 +253,16 @@ class ResultViewModel @Inject constructor(
                 UiEngine.CLOUD -> settingsRepo.settings.value.cloudEngine
                 UiEngine.AI -> EngineId.AI
             }
-            val texts = s.lines.map { it.text }
+            val texts = s.groups.map { it.text }
             translationManager.translateLines(texts, engineId, s.sourceLang, s.targetLang).fold(
                 onSuccess = { tr ->
-                    _state.value = _state.value.copy(phase = ResultUiState.Phase.DONE, translations = tr, message = "识别 ${s.lines.size} 块 · 已翻译")
+                    _state.value = _state.value.copy(phase = ResultUiState.Phase.DONE, translations = tr, message = "识别 ${s.groups.size} 句 · 已翻译")
                 },
                 onFailure = { e ->
                     // 降级到仅展示 OCR 原文并提示原因
                     _state.value = _state.value.copy(
                         phase = ResultUiState.Phase.DONE,
-                        translations = s.lines.map { "" },
+                        translations = s.groups.map { "" },
                         message = "翻译失败：${e.message}（仅显示原文）",
                     )
                 },
