@@ -100,6 +100,10 @@ class ResultViewModel @Inject constructor(
                 return@launch
             }
             _state.value = _state.value.copy(lines = lines, phase = ResultUiState.Phase.TRANSLATE, message = "正在翻译…")
+            // 诊断日志：每行文本 + 四点框坐标（排查角序/合并框问题）
+            lines.forEachIndexed { i, l ->
+                Log.d("PhotoTranslateOcr", "line[$i] '${l.text}' box=${l.box.joinToString(separator = ",") { String.format("%.0f", it) }}")
+            }
             // 微信扫一扫式遮盖：并行生成模糊背景 + 每行背景亮度（黑字/白字）
             viewModelScope.launch { prepareMask(session.file, lines) }
             retranslate()

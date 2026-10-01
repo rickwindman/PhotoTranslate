@@ -367,19 +367,26 @@ private data class QuadGeometry(
 /** 由四点框（TL,TR,BR,BL 顺时针）计算渲染几何；无效框返回 null */
 private fun quadGeometry(box: FloatArray): QuadGeometry? {
     if (box.size < 8) return null
-    val w = hypot(box[2] - box[0], box[3] - box[1])  // TL→TR：文本行进方向边长
-    val h = hypot(box[6] - box[0], box[7] - box[1])  // TL→BL：行高方向边长
+    // 长边归一化：文本行进方向 = 四边形长边。若 TL→TR 是短边，轮转角点一位后重算，
+    // 修复 det 角序导致的"纵向窄条 + 竖排挤压"；真竖排文字框（TL→TR 本就是长边）不受影响。
+    val pts = run {
+        val w0 = hypot(box[2] - box[0], box[3] - box[1])
+        val h0 = hypot(box[6] - box[0], box[7] - box[1])
+        if (h0 > w0) floatArrayOf(box[2], box[3], box[4], box[5], box[6], box[7], box[0], box[1]) else box
+    }
+    val w = hypot(pts[2] - pts[0], pts[3] - pts[1])  // TL→TR：文本行进方向边长
+    val h = hypot(pts[6] - pts[0], pts[7] - pts[1])  // TL→BL：行高方向边长
     if (w < 8f || h < 8f) return null
-    var angle = Math.toDegrees(atan2((box[3] - box[1]).toDouble(), (box[2] - box[0]).toDouble())).toFloat()
+    var angle = Math.toDegrees(atan2((pts[3] - pts[1]).toDouble(), (pts[2] - pts[0]).toDouble())).toFloat()
     if (angle > 90f) angle -= 180f
     if (angle < -90f) angle += 180f
-    val cx = (box[0] + box[2] + box[4] + box[6]) / 4f
-    val cy = (box[1] + box[3] + box[5] + box[7]) / 4f
+    val cx = (pts[0] + pts[2] + pts[4] + pts[6]) / 4f
+    val cy = (pts[1] + pts[3] + pts[5] + pts[7]) / 4f
     // 轴对齐外接框（模糊背景层用：与原图像素对齐）
-    val minX = minOf(box[0], box[2], box[4], box[6])
-    val minY = minOf(box[1], box[3], box[5], box[7])
-    val maxX = maxOf(box[0], box[2], box[4], box[6])
-    val maxY = maxOf(box[1], box[3], box[5], box[7])
+    val minX = minOf(pts[0], pts[2], pts[4], pts[6])
+    val minY = minOf(pts[1], pts[3], pts[5], pts[7])
+    val maxX = maxOf(pts[0], pts[2], pts[4], pts[6])
+    val maxY = maxOf(pts[1], pts[3], pts[5], pts[7])
     return QuadGeometry(
         cx, cy, w.coerceAtLeast(24f), h.coerceAtLeast(16f), angle,
         minX, minY, maxX - minX, maxY - minY,
