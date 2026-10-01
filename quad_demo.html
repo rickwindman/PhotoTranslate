@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCR 四点框几何演示 — 左原点排序规则</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: #eef1f5; color: #1f2937; padding: 20px;
+  }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+  .layout { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .canvas-card {
+    background: #fff; border-radius: 12px; padding: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.08); flex: 0 0 auto;
+  }
+  .stage {
+    position: relative; width: 640px; height: 480px;
+    border-radius: 8px; overflow: hidden;
+    background: linear-gradient(135deg, #faf7f2 0%, #f0ede6 60%, #e7e2d8 100%);
+    touch-action: none;
+  }
+  .paper { position: absolute; inset: 0; padding: 36px 44px; color: #374151; }
+  .paper h2 { font-size: 22px; margin-bottom: 14px; color: #111827; }
+  .paper p { font-size: 14px; line-height: 1.9; color: #4b5563; }
+  .paper .mono { font-family: Consolas, monospace; font-size: 13px; color: #6b7280; margin-top: 14px; }
+
+  svg.geom { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  svg.geom .hit { pointer-events: all; cursor: grab; }
+
+  .mask-outer { position: absolute; overflow: visible; pointer-events: none; }
+  .mask-blur {
+    position: absolute; inset: 0;
+    backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
+    background: rgba(255,255,255,.06);
+  }
+  .mask-text-wrap { position: absolute; display: flex; align-items: center; justify-content: center; }
+  .mask-text {
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    background: rgba(255,255,255,.35); border-radius: 3px;
+    font-weight: 600; color: #111827; line-height: 1.15;
+  }
+
+  .panel { flex: 1 1 300px; min-width: 300px; max-width: 420px; display: flex; flex-direction: column; gap: 12px; }
+  .card {
+    background: #fff; border-radius: 12px; padding: 14px 16px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.08);
+  }
+  .card h3 { font-size: 14px; margin-bottom: 10px; color: #374151; }
+  table.vals { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.vals td { padding: 3px 4px; }
+  table.vals td:first-child { color: #6b7280; width: 46%; }
+  table.vals td:last-child { font-family: Consolas, monospace; font-weight: 600; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: #d1fae5; color: #065f46; }
+  .badge.warn { background: #fef3c7; color: #92400e; }
+  .badge.vert { background: #ede9fe; color: #5b21b6; }
+  .pts { font-family: Consolas, monospace; font-size: 12px; line-height: 1.7; color: #374151; }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  button {
+    border: 1px solid #d1d5db; background: #f9fafb; color: #374151;
+    border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: #eef2ff; border-color: #818cf8; }
+  label.toggle { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; user-select: none; }
+  label.toggle input { width: 16px; height: 16px; accent-color: #4f46e5; }
+  .legend { font-size: 12px; color: #6b7280; line-height: 1.8; }
+  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  .formula { font-family: Consolas, monospace; font-size: 12px; color: #4f46e5; background: #eef2ff; border-radius: 6px; padding: 8px 10px; line-height: 1.9; }
+  .hint { font-size: 12px; color: #9ca3af; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>OCR 四点框几何演示 — 左原点排序规则</h1>
+<div class="sub">无论 OCR 返回四个角点的顺序如何：① 最左点 = 原点 p0 → ② 其余三点按相对 p0 的极角升序（顺时针）定位 → ③ 文字方向沿长边</div>
+
+<div class="layout">
+  <div class="canvas-card">
+    <div class="stage" id="stage">
+      <div class="paper">
+        <h2>季度安全审查报告</h2>
+        <p>本季度完成了平台安全认证体系的升级，覆盖身份验证、权限管理与数据加密三个模块。项目行动组按计划推进，全部里程碑均已达成。</p>
+        <p>Security authentication and project action agents were reviewed by the committee this quarter.</p>
+        <div class="mono">$ git log --oneline &nbsp;&nbsp;is:open author:me &nbsp;&nbsp;CI passed ✓</div>
+      </div>
+
+      <div class="mask-outer" id="maskOuter">
+        <div class="mask-blur"></div>
+      </div>
+
+      <svg class="geom" id="svg" viewBox="0 0 640 480">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#4f46e5"/>
+          </marker>
+        </defs>
+        <rect id="aabb" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="6 4"/>
+        <polygon id="quad" fill="rgba(79,70,229,.08)" stroke="#4f46e5" stroke-width="1.5"/>
+        <!-- 原点到三点的定位线（极角排序可视化） -->
+        <g id="rays"></g>
+        <line id="dirArrow" stroke="#4f46e5" stroke-width="2" marker-end="url(#arrow)"/>
+        <path id="angleArc" fill="none" stroke="#dc2626" stroke-width="1.5"/>
+        <g id="ptsGroup"></g>
+      </svg>
+    </div>
+    <div class="hint">拖拽任意角点 · 把某个点拖到最左边，"原点"会自动跟过去</div>
+  </div>
+
+  <div class="panel">
+    <div class="card">
+      <h3>控制</h3>
+      <div class="btn-row">
+        <button data-preset="h">横排水平</button>
+        <button data-preset="tilt">倾斜 30°</button>
+        <button data-preset="v">竖排 90°</button>
+        <button data-preset="scramble">乱序输入</button>
+      </div>
+      <div style="margin-top:10px">
+        <label class="toggle">
+          <input type="checkbox" id="normalize" checked>
+          左原点排序（关闭 = 按 OCR 原始顺序渲染）
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>几何计算结果 <span id="normBadge"></span> <span id="vertBadge"></span></h3>
+      <table class="vals">
+        <tr><td>原点 p0（最左点）</td><td id="v_origin">-</td></tr>
+        <tr><td>w（文字行进边长）</td><td id="v_w">-</td></tr>
+        <tr><td>h（行高）</td><td id="v_h">-</td></tr>
+        <tr><td>angle（rotationZ）</td><td id="v_angle">-</td></tr>
+        <tr><td>质心 (cx, cy)</td><td id="v_c">-</td></tr>
+        <tr><td>AABB（外扩 2px）</td><td id="v_aabb">-</td></tr>
+        <tr><td>AutoFit 字号</td><td id="v_font">-</td></tr>
+      </table>
+      <div class="pts" id="ptsList" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <h3>排序与计算规则</h3>
+      <div class="formula">
+        ① 选原点：p0 = min(x)（平局取 min(y)）<br>
+        ② 极角排序：其余三点按<br>
+        &nbsp;&nbsp;atan2(p.y−p0.y, p.x−p0.x) 升序<br>
+        &nbsp;&nbsp;→ p1, p2, p3（屏幕 y 向下 = 顺时针）<br>
+        ③ 文字方向 = 长边：<br>
+        &nbsp;&nbsp;d1 = |p0→p1|, d3 = |p0→p3|<br>
+        &nbsp;&nbsp;d3 &gt; d1 → 行进边取 p0→p3（竖排模式）<br>
+        &nbsp;&nbsp;angle 按行进边方向，h = 短边
+      </div>
+      <div class="legend" style="margin-top:8px">
+        <span class="dot" style="background:#d97706"></span>原点 p0（最左点，金色大点）<br>
+        <span class="dot" style="background:#4f46e5"></span>行进方向箭头 / p0 到三点定位线<br>
+        <span class="dot" style="background:#2563eb"></span>AABB 轴对齐外接框（模糊背景层）<br>
+        <span class="dot" style="background:#dc2626"></span>角度标注（相对水平线）
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const stage = document.getElementById('stage');
+  const ptsGroup = document.getElementById('ptsGroup');
+  const raysGroup = document.getElementById('rays');
+  const COLORS = ['#d97706', '#dc2626', '#059669', '#7c3aed']; // p0 金色(原点)
+  const NAMES = ['p0 原点', 'p1', 'p2', 'p3'];
+
+  let points = [];   // 原始输入顺序（可拖拽）
+  let dragIdx = -1;
+  let ptEls = [];    // {hit,dot,label} 一次构建，每帧只更新
+
+  // ---------- 几何计算：左原点排序 + 长边文字方向 ----------
+  function dist(a, b) { return Math.hypot(b.x - a.x, b.y - a.y); }
+
+  function computeGeom(raw, normalize) {
+    let pts;
+    if (normalize) {
+      // ① 原点 = 最左点（x 最小，平局取 y 最小）
+      let oi = 0;
+      for (let i = 1; i < 4; i++) {
+        if (raw[i].x < raw[oi].x - 0.01 || (Math.abs(raw[i].x - raw[oi].x) <= 0.01 && raw[i].y < raw[oi].y)) oi = i;
+      }
+      // ② 其余三点按相对 p0 的极角升序（屏幕 y 向下 = 顺时针）
+      const others = [0, 1, 2, 3].filter(i => i !== oi);
+      const p0 = raw[oi];
+      others.sort((ia, ib) => {
+        const aa = Math.atan2(raw[ia].y - p0.y, raw[ia].x - p0.x);
+        const ab = Math.atan2(raw[ib].y - p0.y, raw[ib].x - p0.x);
+        return aa - ab;
+      });
+      pts = [raw[oi], raw[others[0]], raw[others[1]], raw[others[2]]];
+    } else {
+      pts = raw.slice();
+    }
+
+    // ③ 文字方向 = 长边
+    const d1 = dist(pts[0], pts[1]);   // 候选行进边 A：p0→p1
+    const d3 = dist(pts[0], pts[3]);   // 候选行进边 B：p0→p3
+    const vertical = d3 > d1;          // p0→p3 更长 → 竖排模式
+    const w = vertical ? d3 : d1;
+    const h = vertical ? d1 : d3;
+    const tip = vertical ? pts[3] : pts[1];   // 行进边终点
+    let angle = Math.atan2(tip.y - pts[0].y, tip.x - pts[0].x) * 180 / Math.PI;
+    if (angle > 90) angle -= 180;
+    if (angle < -90) angle += 180;
+
+    const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
+    const cy = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4;
+    const minX = Math.min(pts[0].x, pts[1].x, pts[2].x, pts[3].x);
+    const minY = Math.min(pts[0].y, pts[1].y, pts[2].y, pts[3].y);
+    const maxX = Math.max(pts[0].x, pts[1].x, pts[2].x, pts[3].x);
+    const maxY = Math.max(pts[0].y, pts[1].y, pts[2].y, pts[3].y);
+    return { pts, w, h, angle, cx, cy, ax: minX, ay: minY, aw: maxX - minX, ah: maxY - minY, vertical, d1, d3 };
+  }
+
+  // ---------- AutoFit 字号模拟（二分 + 换行测量） ----------
+  const measureCanvas = document.createElement('canvas');
+  const mctx = measureCanvas.getContext('2d');
+  const TEXT = '安全认证与项目行动代理';
+
+  function wrapLines(text, maxW) {
+    const lines = [];
+    let cur = '';
+    for (const ch of text) {
+      const test = cur + ch;
+      if (mctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = ch; }
+      else cur = test;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  function fitFontSize(boxW, boxH) {
+    let lo = 6, hi = Math.max(6, boxH * 0.72), best = 6;
+    for (let i = 0; i < 14; i++) {
+      const mid = (lo + hi) / 2;
+      mctx.font = `600 ${mid}px "Microsoft YaHei", sans-serif`;
+      const lines = wrapLines(TEXT, boxW - 6);
+      const totalH = lines.length * mid * 1.15;
+      const fits = totalH <= boxH && lines.every(l => mctx.measureText(l).width <= boxW - 6);
+      if (fits) { best = mid; lo = mid; } else hi = mid;
+    }
+    mctx.font = `600 ${best}px "Microsoft YaHei", sans-serif`;
+    return { size: best, lines: wrapLines(TEXT, boxW - 6) };
+  }
+
+  // ---------- SVG 工具 ----------
+  function el(tag, attrs) {
+    const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  function buildPoints() {
+    ptsGroup.innerHTML = '';
+    ptEls = [];
+    points.forEach((p, i) => {
+      const g = el('g', {});
+      const hit = el('circle', { cx: p.x, cy: p.y, r: 16, fill: 'transparent', class: 'hit' });
+      const dot = el('circle', { cx: p.x, cy: p.y, r: 7, fill: '#fff', stroke: '#9ca3af', 'stroke-width': 2 });
+      const label = el('text', {
+        x: p.x + 12, y: p.y - 10, 'font-size': 12, 'font-weight': 700,
+        fill: '#6b7280', 'paint-order': 'stroke', stroke: 'rgba(255,255,255,.85)', 'stroke-width': 3,
+      });
+      g.appendChild(hit); g.appendChild(dot); g.appendChild(label);
+      ptsGroup.appendChild(g);
+      hit.addEventListener('pointerdown', e => { dragIdx = i; hit.setPointerCapture(e.pointerId); e.preventDefault(); });
+      hit.addEventListener('pointermove', e => {
+        if (dragIdx < 0) return;
+        const r = stage.getBoundingClientRect();
+        points[dragIdx] = {
+          x: Math.min(634, Math.max(6, e.clientX - r.left)),
+          y: Math.min(474, Math.max(6, e.clientY - r.top)),
+        };
+        render();
+      });
+      hit.addEventListener('pointerup', () => { dragIdx = -1; });
+      ptEls.push({ hit, dot, label });
+    });
+  }
+
+  function updateMarkers(canonicalFlags) {
+    // canonicalFlags[i] = 该原始点当前担任的角色索引（0=原点…）
+    points.forEach((p, i) => {
+      const e = ptEls[i];
+      if (!e) return;
+      const role = canonicalFlags[i];
+      e.hit.setAttribute('cx', p.x); e.hit.setAttribute('cy', p.y);
+      e.dot.setAttribute('cx', p.x); e.dot.setAttribute('cy', p.y);
+      e.dot.setAttribute('fill', role === 0 ? '#fbbf24' : '#fff');
+      e.dot.setAttribute('stroke', role === 0 ? '#d97706' : '#9ca3af');
+      e.dot.setAttribute('r', role === 0 ? 10 : 7);
+      e.label.setAttribute('x', p.x + 13); e.label.setAttribute('y', p.y - 11);
+      e.label.textContent = NAMES[role];
+      e.label.setAttribute('fill', COLORS[role]);
+    });
+  }
+
+  function render() {
+    const normalize = document.getElementById('normalize').checked;
+    const g = computeGeom(points, normalize);
+    const pad = 2;
+
+    // 原始点 → 角色映射（标签/颜色跟随角色）
+    const role = new Array(4).fill(-1);
+    if (normalize) {
+      g.pts.forEach((cp, j) => {
+        const i = points.indexOf(cp);
+        if (i >= 0) role[i] = j;
+      });
+    } else role.forEach((_, i) => role[i] = i);
+    updateMarkers(role.map((r, i) => r < 0 ? i : r));
+
+    // 四边形 + AABB
+    document.getElementById('quad').setAttribute('points', g.pts.map(p => `${p.x},${p.y}`).join(' '));
+    const aabb = document.getElementById('aabb');
+    aabb.setAttribute('x', g.ax - pad); aabb.setAttribute('y', g.ay - pad);
+    aabb.setAttribute('width', g.aw + pad * 2); aabb.setAttribute('height', g.ah + pad * 2);
+
+    // 原点到三点的定位线（浅色，展示极角排序）
+    raysGroup.innerHTML = '';
+    for (let j = 1; j < 4; j++) {
+      const p0 = g.pts[0], pj = g.pts[j];
+      raysGroup.appendChild(el('line', {
+        x1: p0.x, y1: p0.y, x2: pj.x, y2: pj.y,
+        stroke: 'rgba(217,119,6,.35)', 'stroke-width': 1, 'stroke-dasharray': '3 3',
+      }));
+      const mx = (p0.x + pj.x) / 2, my = (p0.y + pj.y) / 2;
+      const ang = Math.atan2(pj.y - p0.y, pj.x - p0.x) * 180 / Math.PI;
+      const t = el('text', {
+        x: mx + 6, y: my - 6, 'font-size': 11, fill: '#d97706',
+        'paint-order': 'stroke', stroke: 'rgba(255,255,255,.85)', 'stroke-width': 3,
+      });
+      t.textContent = `∠${j}: ${ang.toFixed(1)}°`;
+      raysGroup.appendChild(t);
+    }
+
+    // 行进方向箭头（行进边中点）
+    const [a, b] = [g.pts[0], g.vertical ? g.pts[3] : g.pts[1]];
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const arrow = document.getElementById('dirArrow');
+    arrow.setAttribute('x1', mx - ux * 22); arrow.setAttribute('y1', my - uy * 22);
+    arrow.setAttribute('x2', mx + ux * 22); arrow.setAttribute('y2', my + uy * 22);
+
+    // 角度弧线：原点处从水平方向到行进边
+    const arc = document.getElementById('angleArc');
+    const r = 44;
+    const a1 = Math.atan2(dy, dx);
+    let start = 0, end = a1;
+    if (Math.abs(a1) > Math.PI) { start = a1 > 0 ? a1 - Math.PI * 2 : a1; end = a1 > 0 ? 0 : a1 + Math.PI * 2; }
+    const x1 = a.x + r * Math.cos(start), y1 = a.y + r * Math.sin(start);
+    const x2 = a.x + r * Math.cos(end), y2 = a.y + r * Math.sin(end);
+    arc.setAttribute('d', `M ${x1} ${y1} A ${r} ${r} 0 0 ${end > start ? 1 : 0} ${x2} ${y2}`);
+
+    // 译文块（双层：轴对齐模糊背景 + 旋转文字）
+    const outer = document.getElementById('maskOuter');
+    outer.style.left = (g.ax - pad) + 'px';
+    outer.style.top = (g.ay - pad) + 'px';
+    outer.style.width = (g.aw + pad * 2) + 'px';
+    outer.style.height = (g.ah + pad * 2) + 'px';
+    let wrap = outer.querySelector('.mask-text-wrap');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'mask-text-wrap';
+      const inner = document.createElement('div');
+      inner.className = 'mask-text';
+      inner.id = 'maskText';
+      wrap.appendChild(inner);
+      outer.appendChild(wrap);
+    }
+    wrap.style.left = (g.cx - (g.ax - pad)) + 'px';
+    wrap.style.top = (g.cy - (g.ay - pad)) + 'px';
+    wrap.style.width = g.w + 'px';
+    wrap.style.height = g.h + 'px';
+    wrap.style.transform = `translate(-50%, -50%) rotate(${g.angle}deg)`;
+    const fit = fitFontSize(g.w, g.h);
+    const inner = document.getElementById('maskText');
+    inner.style.width = '100%'; inner.style.height = '100%';
+    inner.style.fontSize = fit.size + 'px';
+    inner.innerHTML = fit.lines.map(l => `<div>${l}</div>`).join('');
+
+    // 数值面板
+    const fmt = n => (Math.round(n * 10) / 10).toString();
+    document.getElementById('v_origin').textContent = `(${fmt(g.pts[0].x)}, ${fmt(g.pts[0].y)})`;
+    document.getElementById('v_w').textContent = fmt(g.w) + ' px' + (g.vertical ? '（p0→p3）' : '（p0→p1）');
+    document.getElementById('v_h').textContent = fmt(g.h) + ' px';
+    document.getElementById('v_angle').textContent = fmt(g.angle) + '°';
+    document.getElementById('v_c').textContent = `(${fmt(g.cx)}, ${fmt(g.cy)})`;
+    document.getElementById('v_aabb').textContent = `${fmt(g.aw + 4)} × ${fmt(g.ah + 4)} @ (${fmt(g.ax - 2)}, ${fmt(g.ay - 2)})`;
+    document.getElementById('v_font').textContent = fmt(fit.size) + ' px × ' + fit.lines.length + ' 行';
+    document.getElementById('normBadge').innerHTML = normalize
+      ? '<span class="badge ok">左原点排序</span>'
+      : '<span class="badge warn">原始顺序</span>';
+    document.getElementById('vertBadge').innerHTML = g.vertical
+      ? '<span class="badge vert">竖排模式（长边=文字方向）</span>'
+      : '';
+    document.getElementById('ptsList').innerHTML = g.pts.map((p, j) =>
+      NAMES[j] + ' = (' + fmt(p.x) + ', ' + fmt(p.y) + ')' + (j === 0 ? '  ← min(x)' : '')
+    ).join('<br>');
+
+    if (ptEls.length !== points.length) buildPoints();
+  }
+
+  // ---------- 预设 ----------
+  function rot(p, c, deg) {
+    const r = deg * Math.PI / 180, dxx = p.x - c.x, dyy = p.y - c.y;
+    return { x: c.x + dxx * Math.cos(r) - dyy * Math.sin(r), y: c.y + dxx * Math.sin(r) + dyy * Math.cos(r) };
+  }
+  function makeBox(cx, cy, w, h, deg) {
+    const c = { x: cx, y: cy };
+    return [
+      rot({ x: cx - w / 2, y: cy - h / 2 }, c, deg),
+      rot({ x: cx + w / 2, y: cy - h / 2 }, c, deg),
+      rot({ x: cx + w / 2, y: cy + h / 2 }, c, deg),
+      rot({ x: cx - w / 2, y: cy + h / 2 }, c, deg),
+    ];
+  }
+  const presets = {
+    h: () => makeBox(320, 220, 260, 44, 0),
+    tilt: () => makeBox(320, 220, 260, 44, 30),
+    v: () => makeBox(320, 220, 44, 260, 0),
+    scramble: () => { // 乱序输入：把倾斜框的角点顺序打乱，开排序后应自动归位
+      const b = makeBox(320, 220, 260, 44, 30);
+      return [b[2], b[0], b[3], b[1]];
+    },
+  };
+  document.querySelectorAll('button[data-preset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      points = presets[btn.dataset.preset]().map(p => ({
+        x: Math.min(634, Math.max(6, p.x)), y: Math.min(474, Math.max(6, p.y)),
+      }));
+      render();
+    });
+  });
+  document.getElementById('normalize').addEventListener('change', render);
+
+  // 初始：支持 ?p=h|tilt|v|scramble 直达预设
+  const qp = new URLSearchParams(location.search).get('p');
+  points = (presets[qp] || presets.tilt)();
+  render();
+})();
+</script>
+</body>
+</html>

@@ -15,20 +15,9 @@ android {
         applicationId = "com.destinywind.dcim"
         minSdk = 31
         targetSdk = 36
-        versionCode = 13
-        versionName = "1.0.12"
-        // 仅 arm64-v8a：所有 native so 只保留 arm64
-        ndk { abiFilters += "arm64-v8a" }
+        versionCode = 1
+        versionName = "1.0.1"
     }
-
-    // NCNN + OpenCV-mobile C++ 推理层
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
-    }
-    ndkVersion = "30.0.14904198"
 
     buildTypes {
         release {
@@ -62,23 +51,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
 
-    // ---- CameraX（拍照）----
-    implementation("androidx.camera:camera-core:1.3.4")
-    implementation("androidx.camera:camera-camera2:1.3.4")
-    implementation("androidx.camera:camera-lifecycle:1.3.4")
-    implementation("androidx.camera:camera-view:1.3.4")
-
-    // ---- 网络（MyMemory / 常规翻译 / AI / 模型下载）----
+    // ---- 网络（MyMemory 免费在线翻译）----
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
-    implementation("com.squareup.retrofit2:converter-kotlinx-serialization:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-
-    // ---- 后台下载（WorkManager）----
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
-    implementation("androidx.hilt:hilt-work:1.2.0")
-    ksp("androidx.hilt:hilt-compiler:1.2.0")
 
     // ---- 本地离线翻译（ML Kit，59 语言，模型按需下载后离线）----
     implementation("com.google.mlkit:translate:17.0.2")
@@ -86,8 +62,6 @@ dependencies {
 
     // ---- 存储 ----
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     // ---- Hilt DI ----
     implementation("com.google.dagger:hilt-android:2.51.1")

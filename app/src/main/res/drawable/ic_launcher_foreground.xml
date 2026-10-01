@@ -3,20 +3,18 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 相机机身 -->
+    <!-- 白色对话气泡（内容居 66dp 安全区） -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M30,38 h10 l4,-6 h20 l4,6 h10 a6,6 0 0 1 6,6 v28 a6,6 0 0 1 -6,6 h-48 a6,6 0 0 1 -6,-6 v-28 a6,6 0 0 1 6,-6 z" />
-    <!-- 镜头外圈 -->
+        android:pathData="M38,32 H70 A10,10 0 0 1 80,42 V58 A10,10 0 0 1 70,68 H48 L34,78 V68 H38 A10,10 0 0 1 28,58 V42 A10,10 0 0 1 38,32 Z" />
+    <!-- 气泡内几何图案：圆 / 三角 / 方 -->
     <path
-        android:fillColor="#1A73E8"
-        android:pathData="M54,44 m-14,0 a14,14 0 1 0 28,0 a14,14 0 1 0 -28,0" />
-    <!-- 镜头内圈 -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,44 m-8,0 a8,8 0 1 0 16,0 a8,8 0 1 0 -16,0" />
-    <!-- 译文 "文" 字示意：小横线 -->
+        android:fillColor="#2E7D32"
+        android:pathData="M42,50 m-4,0 a4,4 0 1 0 8,0 a4,4 0 1 0 -8,0" />
     <path
         android:fillColor="#34A853"
-        android:pathData="M46,76 h16 v3 h-16 z" />
+        android:pathData="M54,44 L58,56 H50 Z" />
+    <path
+        android:fillColor="#66BB6A"
+        android:pathData="M62,46 h10 v8 h-10 z" />
 </vector>
