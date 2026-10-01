@@ -106,6 +106,37 @@ fun SettingsScreen(
         var addDialog by rememberSaveable { mutableStateOf(false) }
         LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
 
+            // 通用设置（固定最顶部，不随分组展开被挤出屏幕）
+            item {
+                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp), shape = RoundedCornerShape(14.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text("⚙ 通用设置", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Spacer(Modifier.height(6.dp))
+                        DropdownRow("默认翻译引擎", listOf(
+                            EngineId.LOCAL to "本地翻译（离线）", EngineId.FREE to "免费翻译（MyMemory）",
+                            EngineId.CLOUD_BAIDU to "常规翻译（百度）", EngineId.CLOUD_DEEPL to "常规翻译（DeepL）",
+                            EngineId.CLOUD_AZURE to "常规翻译（微软）", EngineId.CLOUD_TENCENT to "常规翻译（腾讯）",
+                            EngineId.AI to "AI 翻译",
+                        ), editing.defaultEngine) { editing = editing.copy(defaultEngine = it) }
+                        DropdownRowText("源语言", listOf(
+                            "auto" to "自动（混合语言）", "en" to "英文", "zh" to "中文", "ja" to "日文", "ko" to "韩文",
+                        ), editing.sourceLang) { editing = editing.copy(sourceLang = it) }
+                        DropdownRowText("目标语言", listOf(
+                            "zh" to "中文（简体）", "en" to "英文", "ja" to "日文", "ko" to "韩文",
+                        ), editing.targetLang) { editing = editing.copy(targetLang = it) }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("译文叠加透明度 ${"%.0f".format(Locale.US, editing.overlayOpacity * 100)}%", modifier = Modifier.weight(1f))
+                            Slider(value = editing.overlayOpacity, onValueChange = { editing = editing.copy(overlayOpacity = it) }, valueRange = 0.4f..1f, modifier = Modifier.width(160.dp))
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("译文叠加字号 ×${"%.1f".format(Locale.US, editing.overlayFontScale)}", modifier = Modifier.weight(1f))
+                            Slider(value = editing.overlayFontScale, onValueChange = { editing = editing.copy(overlayFontScale = it) }, valueRange = 0.7f..1.6f, modifier = Modifier.width(160.dp))
+                        }
+                        Text("提示：源语言选“自动”时本地翻译会自动识别语言", fontSize = 10.sp, color = Color(0xFF999999))
+                    }
+                }
+            }
+
             // OCR 模型
             item {
                 Group("🔍 OCR 模型（PaddleOCR 离线识别）", initiallyOpen = true) {
@@ -267,40 +298,9 @@ fun SettingsScreen(
                 }
             }
 
-            // ① 通用设置（置顶常显，无下级菜单）
+            // 版本号
             item {
-                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp), shape = RoundedCornerShape(14.dp)) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text("⚙ 通用设置", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Spacer(Modifier.height(6.dp))
-                        DropdownRow("默认翻译引擎", listOf(
-                            EngineId.LOCAL to "本地翻译（离线）", EngineId.FREE to "免费翻译（MyMemory）",
-                            EngineId.CLOUD_BAIDU to "常规翻译（百度）", EngineId.CLOUD_DEEPL to "常规翻译（DeepL）",
-                            EngineId.CLOUD_AZURE to "常规翻译（微软）", EngineId.CLOUD_TENCENT to "常规翻译（腾讯）",
-                            EngineId.AI to "AI 翻译",
-                        ), editing.defaultEngine) { editing = editing.copy(defaultEngine = it) }
-                        DropdownRowText("源语言", listOf(
-                            "auto" to "自动（混合语言）", "en" to "英文", "zh" to "中文", "ja" to "日文", "ko" to "韩文",
-                        ), editing.sourceLang) { editing = editing.copy(sourceLang = it) }
-                        DropdownRowText("目标语言", listOf(
-                            "zh" to "中文（简体）", "en" to "英文", "ja" to "日文", "ko" to "韩文",
-                        ), editing.targetLang) { editing = editing.copy(targetLang = it) }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("译文叠加透明度 ${"%.0f".format(Locale.US, editing.overlayOpacity * 100)}%", modifier = Modifier.weight(1f))
-                            Slider(value = editing.overlayOpacity, onValueChange = { editing = editing.copy(overlayOpacity = it) }, valueRange = 0.4f..1f, modifier = Modifier.width(160.dp))
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("译文叠加字号 ×${"%.1f".format(Locale.US, editing.overlayFontScale)}", modifier = Modifier.weight(1f))
-                            Slider(value = editing.overlayFontScale, onValueChange = { editing = editing.copy(overlayFontScale = it) }, valueRange = 0.7f..1.6f, modifier = Modifier.width(160.dp))
-                        }
-                        Text("提示：源语言选“自动”时本地翻译会自动识别语言", fontSize = 10.sp, color = Color(0xFF999999))
-                    }
-                }
-            }
-
-            // ② OCR 模型
-            item {
-                Text("拍照翻译 v1.0.4 (5) · com.destinywind.dcim", fontSize = 10.sp, color = Color(0xFF999999), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                Text("拍照翻译 v1.0.5 (6) · com.destinywind.dcim", fontSize = 10.sp, color = Color(0xFF999999), modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
             }
         }
     }

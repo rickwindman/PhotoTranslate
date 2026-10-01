@@ -62,6 +62,13 @@ class SettingsViewModel @Inject constructor(
     val state: StateFlow<SettingsUiState> = _state
 
     init {
+        // 持久层任何设置变更（如启用模型写入 activeModelId）实时同步到 UI 状态，
+        // 否则卡片高亮读的是过期快照，会出现"点启用没反应，重进才生效"
+        viewModelScope.launch {
+            settingsRepo.settings.collect { s ->
+                if (_state.value.settings != s) _state.value = _state.value.copy(settings = s)
+            }
+        }
         refreshModels()
         refreshMlKit()
         viewModelScope.launch {
